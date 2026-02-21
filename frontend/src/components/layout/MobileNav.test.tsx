@@ -35,7 +35,7 @@ describe('MobileNav', () => {
   });
 
   it('highlights active panel with accent color', () => {
-    const { container } = render(<MobileNav {...defaultProps} activePanel="chat" />);
+    render(<MobileNav {...defaultProps} activePanel="chat" />);
 
     // Find the Chat button specifically (by text content)
     const chatButton = screen.getByText('Chat').closest('button') as HTMLElement;

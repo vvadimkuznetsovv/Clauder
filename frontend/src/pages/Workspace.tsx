@@ -28,7 +28,6 @@ export default function Workspace() {
   const {
     layout,
     visibility,
-    dnd,
     mobilePanels,
     mergePanels,
     splitPanel,
