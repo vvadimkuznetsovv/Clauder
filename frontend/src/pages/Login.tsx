@@ -39,9 +39,9 @@ function PillInput({ type = 'text', value, onChange, placeholder, autoFocus, end
   return (
     <div ref={wrapRef} style={{
       borderRadius: '9999px', overflow: 'hidden',
-      background: 'rgba(0,0,0,0.35)',
-      border: '1px solid rgba(255,255,255,0.12)',
-      boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.3), inset 0 -1px 0 rgba(255,255,255,0.04)',
+      background: 'rgba(0,0,0,0.6)',
+      border: '1px solid rgba(255,255,255,0.2)',
+      boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.04)',
       transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
       backdropFilter: 'blur(12px) saturate(150%)',
       WebkitBackdropFilter: 'blur(12px) saturate(150%)',
@@ -99,7 +99,7 @@ export default function Login() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', position: 'relative' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', position: 'relative', overflow: 'hidden' }}>
 
       {/* SVG Glass Distortion Filter (Chromium only) */}
       <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style={{ position: 'absolute', overflow: 'hidden' }}>
@@ -155,15 +155,15 @@ export default function Login() {
               {/* Glass specular highlight */}
               <div style={{ position: 'absolute', inset: 0, borderRadius: '26px', background: 'linear-gradient(145deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.05) 30%, transparent 55%)', pointerEvents: 'none' }} />
               {/* Terminal icon SVG */}
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" style={{ position: 'relative', zIndex: 1, filter: 'drop-shadow(0 0 8px rgba(127,0,255,0.4))' }}>
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" style={{ position: 'relative', zIndex: 1, filter: 'drop-shadow(0 0 12px rgba(255,255,255,0.5))' }}>
                 <rect x="2" y="3" width="20" height="18" rx="3" ry="3"
-                  stroke="rgba(255,255,255,0.5)" strokeWidth="1.2" fill="rgba(255,255,255,0.06)" />
-                <line x1="2" y1="7.5" x2="22" y2="7.5" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-                <circle cx="5.5" cy="5.3" r="0.9" fill="rgba(255,255,255,0.35)" />
-                <circle cx="8" cy="5.3" r="0.9" fill="rgba(255,255,255,0.25)" />
-                <circle cx="10.5" cy="5.3" r="0.9" fill="rgba(255,255,255,0.2)" />
-                <polyline points="6,12.5 9,15 6,17.5" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                <line x1="11.5" y1="17.5" x2="17" y2="17.5" stroke="rgba(255,255,255,0.5)" strokeWidth="1.8" strokeLinecap="round" />
+                  stroke="rgba(255,255,255,0.9)" strokeWidth="1.5" fill="rgba(255,255,255,0.1)" />
+                <line x1="2" y1="7.5" x2="22" y2="7.5" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
+                <circle cx="5.5" cy="5.3" r="0.9" fill="rgba(255,255,255,0.6)" />
+                <circle cx="8" cy="5.3" r="0.9" fill="rgba(255,255,255,0.5)" />
+                <circle cx="10.5" cy="5.3" r="0.9" fill="rgba(255,255,255,0.4)" />
+                <polyline points="6,12.5 9,15 6,17.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                <line x1="11.5" y1="17.5" x2="17" y2="17.5" stroke="rgba(255,255,255,0.8)" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
             <h1 className="login-title" style={{ fontSize: '38px', fontWeight: 800, letterSpacing: '-0.03em', color: 'rgba(255,255,255,0.95)', marginBottom: '10px' }}>Clauder</h1>
@@ -173,11 +173,11 @@ export default function Login() {
           {!showTotp ? (
             <form onSubmit={handleLogin} className="login-form" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
-                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)', paddingLeft: '12px' }}>Username</label>
+                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.9)', paddingLeft: '12px' }}>Username</label>
                 <PillInput type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Enter username" autoFocus required />
               </div>
               <div>
-                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)', paddingLeft: '12px' }}>Password</label>
+                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.9)', paddingLeft: '12px' }}>Password</label>
                 <PillInput
                   type={showPassword ? 'text' : 'password'}
                   value={password}

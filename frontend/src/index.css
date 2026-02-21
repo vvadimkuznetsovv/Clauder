@@ -1181,8 +1181,8 @@
     .login-form { gap: 16px !important; }
     .login-btn { padding: 14px !important; font-size: 15px !important; }
 
-    /* Smaller pill inputs on mobile */
-    .login-form input { padding: 14px 20px !important; font-size: 15px !important; }
+    /* Pill inputs on mobile — 16px prevents iOS zoom */
+    .login-form input { padding: 14px 20px !important; font-size: 16px !important; }
   }
 }
 
