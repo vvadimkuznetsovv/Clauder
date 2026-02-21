@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { getSessions, createSession, deleteSession, type ChatSession } from '../../api/sessions';
 import { useAuthStore } from '../../store/authStore';
-import { logout } from '../../api/auth';
+import { logout, totpSetup, totpConfirm } from '../../api/auth';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface SidebarProps {
   activeSessionId: string | null;
@@ -14,7 +15,14 @@ interface SidebarProps {
 
 export default function Sidebar({ activeSessionId, onSelectSession, isOpen, onClose }: SidebarProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [showTotpSetup, setShowTotpSetup] = useState(false);
+  const [totpUrl, setTotpUrl] = useState('');
+  const [totpSecret, setTotpSecret] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [totpLoading, setTotpLoading] = useState(false);
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const user = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
   const navigate = useNavigate();
 
   const loadSessions = async () => {
@@ -53,6 +61,35 @@ export default function Sidebar({ activeSessionId, onSelectSession, isOpen, onCl
     }
   };
 
+  const handleTotpSetup = async () => {
+    try {
+      const { data } = await totpSetup();
+      setTotpUrl(data.url);
+      setTotpSecret(data.secret);
+      setShowTotpSetup(true);
+    } catch {
+      toast.error('Failed to start 2FA setup');
+    }
+  };
+
+  const handleTotpConfirm = async () => {
+    if (totpCode.length !== 6) return;
+    setTotpLoading(true);
+    try {
+      await totpConfirm(totpCode);
+      if (user) setUser({ ...user, totp_enabled: true });
+      toast.success('2FA enabled successfully');
+      setShowTotpSetup(false);
+      setTotpCode('');
+      setTotpUrl('');
+      setTotpSecret('');
+    } catch {
+      toast.error('Invalid code, try again');
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -66,91 +103,215 @@ export default function Sidebar({ activeSessionId, onSelectSession, isOpen, onCl
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 z-40 lg:hidden"
+          style={{ background: 'rgba(0, 0, 0, 0.6)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}
           onClick={onClose}
         />
       )}
 
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 flex flex-col border-r transition-transform duration-200 lg:translate-x-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 flex flex-col transition-transform duration-300 lg:translate-x-0 lg:w-full ${
+          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
         style={{
-          background: 'var(--bg-secondary)',
-          borderColor: 'var(--border)',
+          background: 'rgba(255, 255, 255, 0.03)',
+          WebkitBackdropFilter: 'blur(40px)',
+          backdropFilter: 'blur(40px)',
+          borderRight: '1px solid var(--glass-border)',
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b"
-             style={{ borderColor: 'var(--border)' }}>
-          <h1 className="text-lg font-bold" style={{ color: 'var(--accent)' }}>
-            Clauder
-          </h1>
-          <button
-            onClick={onClose}
-            className="lg:hidden p-1 hover:opacity-70"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            X
-          </button>
+        <div className="p-4 pb-3">
+          <div className="flex items-center justify-between">
+            <h1 className="sidebar-glass-logo">Clauder</h1>
+            <button
+              onClick={onClose}
+              className="lg:hidden w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200"
+              style={{
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: 'rgba(255, 255, 255, 0.5)',
+              }}
+              title="Close"
+              aria-label="Close sidebar"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
+        <div className="glass-divider mx-3" />
+
         {/* New Chat */}
-        <div className="p-2">
+        <div className="px-3 py-2">
           <button
             onClick={handleNewChat}
-            className="w-full py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80 border"
-            style={{
-              borderColor: 'var(--border)',
-              color: 'var(--text-primary)',
-              background: 'var(--bg-tertiary)',
-            }}
+            className="sidebar-new-chat w-full py-2.5 rounded-2xl text-sm font-semibold"
           >
-            + New Chat
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Chat
           </button>
         </div>
 
         {/* Sessions list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-2 space-y-0.5 py-1">
           {sessions.map((session) => (
             <button
+              type="button"
               key={session.id}
               onClick={() => { onSelectSession(session); onClose(); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors group"
-              style={{
-                background: session.id === activeSessionId ? 'var(--bg-tertiary)' : 'transparent',
-                color: 'var(--text-primary)',
-              }}
-              onMouseEnter={(e) => {
-                if (session.id !== activeSessionId) e.currentTarget.style.background = 'var(--bg-tertiary)';
-              }}
-              onMouseLeave={(e) => {
-                if (session.id !== activeSessionId) e.currentTarget.style.background = 'transparent';
-              }}
+              className={`sidebar-session w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-left transition-all duration-200 group ${
+                session.id === activeSessionId ? 'active' : ''
+              }`}
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ opacity: 0.35 }}>
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
               <span className="truncate flex-1">{session.title}</span>
               <span
                 onClick={(e) => handleDelete(e, session.id)}
-                className="opacity-0 group-hover:opacity-60 hover:!opacity-100 text-xs shrink-0 px-1"
+                className="opacity-0 group-hover:opacity-60 hover:!opacity-100 shrink-0 p-1 rounded-lg transition-all duration-200"
                 style={{ color: 'var(--danger)' }}
               >
-                x
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
               </span>
             </button>
           ))}
         </div>
 
+        <div className="glass-divider mx-3" />
+
         {/* Footer */}
-        <div className="p-3 border-t" style={{ borderColor: 'var(--border)' }}>
+        <div className="p-3 space-y-2">
+          {user && !user.totp_enabled && (
+            <button
+              type="button"
+              onClick={handleTotpSetup}
+              className="sidebar-footer-btn w-full py-2.5 rounded-2xl text-xs font-semibold"
+              title="Enable two-factor authentication"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+              Setup 2FA
+            </button>
+          )}
           <button
+            type="button"
             onClick={handleLogout}
-            className="w-full py-2 rounded-lg text-sm transition-opacity hover:opacity-80"
-            style={{ color: 'var(--danger)' }}
+            className="sidebar-footer-btn sidebar-footer-danger w-full py-2.5 rounded-2xl text-xs font-semibold"
           >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
             Logout
           </button>
         </div>
       </aside>
+
+      {/* TOTP Setup Modal */}
+      {showTotpSetup && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0, 0, 0, 0.7)', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
+          onClick={() => { setShowTotpSetup(false); setTotpCode(''); }}
+        >
+          <div
+            className="liquid-glass w-full max-w-sm rounded-3xl p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold mb-2 text-center" style={{ color: 'var(--text-primary)' }}>
+              Setup 2FA
+            </h2>
+            <p className="text-sm mb-6 text-center" style={{ color: 'var(--text-secondary)' }}>
+              Scan the QR code with your authenticator app
+            </p>
+
+            <div className="flex justify-center mb-4">
+              <div className="p-3 rounded-2xl" style={{ background: 'white' }}>
+                <QRCodeSVG value={totpUrl} size={180} />
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-xs mb-2 text-center" style={{ color: 'var(--text-muted)' }}>
+                Or enter this secret manually:
+              </p>
+              <div
+                className="rounded-xl p-3 text-center select-all cursor-pointer"
+                style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--glass-border)',
+                  fontFamily: "'SF Mono','JetBrains Mono',monospace",
+                  fontSize: '12px',
+                  color: 'var(--accent-bright)',
+                  letterSpacing: '0.05em',
+                  wordBreak: 'break-all',
+                }}
+                title="Click to select"
+              >
+                {totpSecret}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-muted)', paddingLeft: '4px' }}>
+                Verification Code
+              </label>
+              <div
+                className="rounded-xl overflow-hidden"
+                style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid var(--glass-border)' }}
+              >
+                <input
+                  type="text"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  maxLength={6}
+                  autoFocus
+                  autoComplete="off"
+                  style={{
+                    width: '100%', padding: '14px', fontSize: '24px', textAlign: 'center',
+                    letterSpacing: '0.4em', fontFamily: "'SF Mono','JetBrains Mono',monospace",
+                    fontWeight: 700, background: 'transparent', border: 'none',
+                    color: 'var(--text-primary)', outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={handleTotpConfirm}
+                disabled={totpLoading || totpCode.length !== 6}
+                className="w-full py-3 rounded-xl text-sm font-bold btn-accent"
+                style={{ opacity: (totpLoading || totpCode.length !== 6) ? 0.3 : 1 }}
+              >
+                {totpLoading ? 'Verifying...' : 'Enable 2FA'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowTotpSetup(false); setTotpCode(''); }}
+                className="w-full py-2.5 rounded-xl text-sm font-medium btn-glass"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

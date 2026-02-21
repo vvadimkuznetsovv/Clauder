@@ -7,7 +7,6 @@ interface CodeEditorProps {
   filePath: string | null;
 }
 
-// Detect language from file extension
 function getLanguage(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase();
   const map: Record<string, string> = {
@@ -71,7 +70,6 @@ export default function CodeEditor({ filePath }: CodeEditorProps) {
     }
   };
 
-  // Ctrl+S to save
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -85,32 +83,43 @@ export default function CodeEditor({ filePath }: CodeEditorProps) {
 
   if (!filePath) {
     return (
-      <div className="h-full flex items-center justify-center"
-           style={{ background: 'var(--bg-primary)' }}>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Select a file to edit
-        </p>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4" style={{ opacity: 0.1, color: 'var(--accent)' }}>
+            {'</>'}
+          </div>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Select a file to edit
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-full flex flex-col">
       {/* File header */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b text-xs"
-           style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}>
+      <div
+        className="flex items-center gap-2 px-3 py-1.5 text-xs"
+        style={{
+          borderBottom: '1px solid var(--glass-border)',
+          background: 'rgba(255, 255, 255, 0.02)',
+        }}
+      >
         <span className="truncate font-mono" style={{ color: 'var(--text-primary)' }}>
           {filePath}
         </span>
         {modified && (
-          <span className="shrink-0 w-2 h-2 rounded-full" style={{ background: 'var(--warning)' }} />
+          <span
+            className="shrink-0 w-2 h-2 rounded-full"
+            style={{ background: 'var(--warning)', boxShadow: '0 0 8px rgba(251, 191, 36, 0.5)' }}
+          />
         )}
         <div className="flex-1" />
         <button
           onClick={handleSave}
           disabled={!modified}
-          className="px-2 py-0.5 rounded text-xs transition-opacity disabled:opacity-30"
-          style={{ background: 'var(--accent)', color: '#fff' }}
+          className="btn-accent px-3 py-0.5 rounded-lg text-xs"
         >
           Save
         </button>
@@ -120,7 +129,9 @@ export default function CodeEditor({ filePath }: CodeEditorProps) {
       <div className="flex-1">
         {loading ? (
           <div className="flex items-center justify-center h-full">
-            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading...</span>
+            <span className="text-sm glow-pulse" style={{ color: 'var(--text-secondary)' }}>
+              Loading...
+            </span>
           </div>
         ) : (
           <Editor

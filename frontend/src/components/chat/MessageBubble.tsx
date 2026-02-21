@@ -12,7 +12,6 @@ interface MessageBubbleProps {
 export default function MessageBubble({ role, content, isStreaming }: MessageBubbleProps) {
   const isUser = role === 'user';
 
-  // Parse streamed JSON content to extract readable text
   const displayContent = role === 'assistant' ? parseAssistantContent(content) : content;
 
   return (
@@ -21,11 +20,23 @@ export default function MessageBubble({ role, content, isStreaming }: MessageBub
         className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
           isUser ? 'rounded-br-md' : 'rounded-bl-md'
         }`}
-        style={{
-          background: isUser ? 'var(--accent)' : 'var(--bg-tertiary)',
-          color: isUser ? '#fff' : 'var(--text-primary)',
-          border: isUser ? 'none' : '1px solid var(--border)',
-        }}
+        style={
+          isUser
+            ? {
+                background: 'linear-gradient(135deg, rgba(110, 180, 255, 0.3), rgba(110, 180, 255, 0.15))',
+                border: '1px solid rgba(110, 180, 255, 0.3)',
+                color: '#fff',
+                WebkitBackdropFilter: 'blur(16px)',
+                backdropFilter: 'blur(16px)',
+              }
+            : {
+                background: 'var(--glass)',
+                border: '1px solid var(--glass-border)',
+                color: 'var(--text-primary)',
+                WebkitBackdropFilter: 'blur(16px)',
+                backdropFilter: 'blur(16px)',
+              }
+        }
       >
         {isUser ? (
           <p className="whitespace-pre-wrap">{displayContent}</p>
@@ -41,7 +52,10 @@ export default function MessageBubble({ role, content, isStreaming }: MessageBub
                     return (
                       <code
                         className="px-1.5 py-0.5 rounded text-xs font-mono"
-                        style={{ background: 'var(--bg-primary)' }}
+                        style={{
+                          background: 'rgba(0, 0, 0, 0.4)',
+                          border: '1px solid var(--glass-border)',
+                        }}
                         {...props}
                       >
                         {children}
@@ -53,7 +67,12 @@ export default function MessageBubble({ role, content, isStreaming }: MessageBub
                       style={oneDark}
                       language={match[1]}
                       PreTag="div"
-                      className="rounded-lg !my-2 text-xs"
+                      className="rounded-xl !my-2 text-xs"
+                      customStyle={{
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '12px',
+                      }}
                     >
                       {String(children).replace(/\n$/, '')}
                     </SyntaxHighlighter>
@@ -64,7 +83,10 @@ export default function MessageBubble({ role, content, isStreaming }: MessageBub
               {displayContent}
             </ReactMarkdown>
             {isStreaming && (
-              <span className="inline-block w-2 h-4 ml-1 animate-pulse" style={{ background: 'var(--accent)' }} />
+              <span
+                className="inline-block w-2 h-5 ml-1 cursor-blink rounded-sm"
+                style={{ background: 'var(--accent)' }}
+              />
             )}
           </div>
         )}
@@ -74,7 +96,6 @@ export default function MessageBubble({ role, content, isStreaming }: MessageBub
 }
 
 function parseAssistantContent(raw: string): string {
-  // Try to parse stream-json lines and extract text
   const lines = raw.split('\n').filter(Boolean);
   const textParts: string[] = [];
 
@@ -82,7 +103,6 @@ function parseAssistantContent(raw: string): string {
     try {
       const event = JSON.parse(line);
 
-      // Handle different Claude Code stream-json event types
       if (event.type === 'assistant' && event.message?.content) {
         for (const block of event.message.content) {
           if (block.type === 'text') textParts.push(block.text);
@@ -94,7 +114,6 @@ function parseAssistantContent(raw: string): string {
         if (event.result) textParts.push(event.result);
       }
     } catch {
-      // Not JSON — use raw text
       textParts.push(line);
     }
   }

@@ -42,31 +42,46 @@ export default function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
     if (parent) loadFiles(parent);
   };
 
-  // Sort: folders first, then files
   const sorted = [...files].sort((a, b) => {
     if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'var(--bg-secondary)' }}>
+    <div
+      className="h-full flex flex-col"
+      style={{ background: 'transparent' }}
+    >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b text-xs"
-           style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-        <button onClick={goUp} className="hover:opacity-70" title="Go up">
+      <div
+        className="flex items-center gap-2 px-3 py-2 text-xs"
+        style={{
+          borderBottom: '1px solid var(--glass-border)',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        <button
+          onClick={goUp}
+          className="hover:opacity-70 transition-opacity px-1"
+          title="Go up"
+        >
           ..
         </button>
         <span className="truncate flex-1 font-mono">{currentPath}</span>
-        <button onClick={() => loadFiles(currentPath)} className="hover:opacity-70" title="Refresh">
+        <button
+          onClick={() => loadFiles(currentPath)}
+          className="hover:opacity-70 transition-opacity px-1"
+          title="Refresh"
+        >
           R
         </button>
       </div>
 
       {/* File list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto py-1">
         {loading ? (
           <div className="p-4 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Loading...
+            <span className="glow-pulse inline-block">Loading...</span>
           </div>
         ) : sorted.length === 0 ? (
           <div className="p-4 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>

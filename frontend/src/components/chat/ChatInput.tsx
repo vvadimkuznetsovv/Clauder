@@ -33,7 +33,13 @@ export default function ChatInput({ onSend, onCancel, isStreaming, disabled }: C
   };
 
   return (
-    <div className="p-3 border-t" style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}>
+    <div
+      className="p-3"
+      style={{
+        background: 'rgba(0, 0, 0, 0.15)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+      }}
+    >
       <div className="flex items-end gap-2">
         <textarea
           ref={textareaRef}
@@ -42,20 +48,14 @@ export default function ChatInput({ onSend, onCancel, isStreaming, disabled }: C
           onKeyDown={handleKeyDown}
           placeholder="Send a message..."
           rows={1}
-          className="flex-1 resize-none px-4 py-3 rounded-xl text-sm outline-none"
-          style={{
-            background: 'var(--bg-tertiary)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-primary)',
-            maxHeight: '200px',
-          }}
+          className="glass-input flex-1 resize-none px-4 py-3 rounded-xl text-sm outline-none"
+          style={{ maxHeight: '200px' }}
           disabled={disabled}
         />
         {isStreaming ? (
           <button
             onClick={onCancel}
-            className="px-4 py-3 rounded-xl text-sm font-medium transition-opacity hover:opacity-80"
-            style={{ background: 'var(--danger)', color: '#fff' }}
+            className="btn-danger px-4 py-3 rounded-xl text-sm font-medium"
           >
             Stop
           </button>
@@ -63,8 +63,7 @@ export default function ChatInput({ onSend, onCancel, isStreaming, disabled }: C
           <button
             onClick={handleSubmit}
             disabled={!message.trim() || disabled}
-            className="px-4 py-3 rounded-xl text-sm font-medium transition-opacity hover:opacity-80 disabled:opacity-30"
-            style={{ background: 'var(--accent)', color: '#fff' }}
+            className="btn-accent px-4 py-3 rounded-xl text-sm font-medium"
           >
             Send
           </button>

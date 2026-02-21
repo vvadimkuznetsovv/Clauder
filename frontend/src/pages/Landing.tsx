@@ -2,52 +2,72 @@ import { Link } from 'react-router-dom';
 
 export default function Landing() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8"
-         style={{ background: 'var(--bg-primary)' }}>
-      <div className="max-w-lg text-center">
-        <h1 className="text-5xl font-bold mb-4" style={{ color: 'var(--accent)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-8 relative">
+      <div className="bg-mesh" />
+
+      {/* Floating orbs */}
+      <div className="fixed top-20 right-1/4 w-72 h-72 rounded-full opacity-20 blur-3xl pointer-events-none"
+           style={{ background: 'radial-gradient(circle, rgba(110,180,255,0.5), transparent)' }} />
+      <div className="fixed bottom-20 left-1/3 w-56 h-56 rounded-full opacity-15 blur-3xl pointer-events-none"
+           style={{ background: 'radial-gradient(circle, rgba(160,100,255,0.5), transparent)' }} />
+
+      <div className="relative z-10 max-w-lg text-center">
+        {/* Logo */}
+        <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-6 glass glow-pulse">
+          <span className="text-3xl font-mono font-bold" style={{ color: 'var(--accent)' }}>{'>'}_</span>
+        </div>
+
+        <h1 className="text-5xl font-bold tracking-tight mb-3" style={{ color: 'var(--text-primary)' }}>
           Clauder
         </h1>
         <p className="text-lg mb-2" style={{ color: 'var(--text-primary)' }}>
           Claude Code in your browser
         </p>
-        <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-sm mb-10 max-w-md mx-auto leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
           A self-hosted web interface for Claude Code. Chat with AI, edit files, run commands —
           all from your phone or desktop browser. Your own AI-powered development server.
         </p>
 
-        <div className="flex gap-4 justify-center mb-12">
+        <div className="flex gap-4 justify-center mb-14">
           <Link
             to="/login"
-            className="px-6 py-3 rounded-xl font-medium text-sm transition-opacity hover:opacity-80"
-            style={{ background: 'var(--accent)', color: '#fff' }}
+            className="btn-accent px-8 py-3 rounded-2xl font-medium text-sm inline-block"
           >
             Sign In
           </Link>
+          <a
+            href="#features"
+            className="btn-glass px-8 py-3 rounded-2xl font-medium text-sm inline-block"
+          >
+            Learn More
+          </a>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 text-left">
+        <div id="features" className="grid grid-cols-2 gap-4 text-left">
           {[
-            { title: 'Chat', desc: 'Interact with Claude Code via chat' },
-            { title: 'Files', desc: 'Browse and edit files with Monaco Editor' },
-            { title: 'Terminal', desc: 'Full terminal access via xterm.js' },
-            { title: 'Secure', desc: '2FA authentication, JWT tokens' },
+            { icon: '>', title: 'Chat', desc: 'Interact with Claude Code via real-time streaming chat' },
+            { icon: '#', title: 'Editor', desc: 'Browse and edit files with Monaco code editor' },
+            { icon: '$', title: 'Terminal', desc: 'Full terminal access via integrated web terminal' },
+            { icon: '🔐', title: 'Secure', desc: '2FA authentication with TOTP, JWT tokens' },
           ].map((item) => (
-            <div key={item.title} className="p-4 rounded-xl"
-                 style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-              <h3 className="font-semibold text-sm mb-1" style={{ color: 'var(--accent)' }}>
+            <div key={item.title} className="glass rounded-2xl p-5 group hover:scale-[1.02] transition-transform">
+              <div className="w-10 h-10 rounded-xl glass flex items-center justify-center mb-3 text-lg font-mono"
+                   style={{ color: 'var(--accent)' }}>
+                {item.icon}
+              </div>
+              <h3 className="font-semibold text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
                 {item.title}
               </h3>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                 {item.desc}
               </p>
             </div>
           ))}
         </div>
 
-        <p className="mt-12 text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <p className="mt-14 text-xs" style={{ color: 'var(--text-tertiary)' }}>
           Want your own Clauder instance?{' '}
-          <a href="#" style={{ color: 'var(--accent)' }} className="hover:underline">
+          <a href="#" className="hover:underline" style={{ color: 'var(--accent)' }}>
             Get in touch
           </a>
         </p>

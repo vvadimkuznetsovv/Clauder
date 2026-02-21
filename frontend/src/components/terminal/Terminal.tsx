@@ -19,29 +19,32 @@ export default function TerminalComponent({ active }: TerminalProps) {
 
     const xterm = new XTerm({
       cursorBlink: true,
+      cursorStyle: 'bar',
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
       theme: {
-        background: '#0d1117',
-        foreground: '#e6edf3',
-        cursor: '#58a6ff',
-        selectionBackground: '#264f78',
+        background: '#0a0a1a',
+        foreground: 'rgba(255, 255, 255, 0.9)',
+        cursor: '#6eb4ff',
+        cursorAccent: '#0a0a1a',
+        selectionBackground: 'rgba(110, 180, 255, 0.25)',
+        selectionForeground: '#ffffff',
         black: '#484f58',
-        red: '#ff7b72',
-        green: '#3fb950',
-        yellow: '#d29922',
-        blue: '#58a6ff',
-        magenta: '#bc8cff',
-        cyan: '#39c5cf',
-        white: '#b1bac4',
+        red: '#f87171',
+        green: '#4ade80',
+        yellow: '#fbbf24',
+        blue: '#6eb4ff',
+        magenta: '#a78bfa',
+        cyan: '#22d3ee',
+        white: '#e2e8f0',
         brightBlack: '#6e7681',
-        brightRed: '#ffa198',
-        brightGreen: '#56d364',
-        brightYellow: '#e3b341',
-        brightBlue: '#79c0ff',
-        brightMagenta: '#d2a8ff',
-        brightCyan: '#56d4dd',
-        brightWhite: '#f0f6fc',
+        brightRed: '#fca5a5',
+        brightGreen: '#86efac',
+        brightYellow: '#fde68a',
+        brightBlue: '#93c5fd',
+        brightMagenta: '#c4b5fd',
+        brightCyan: '#67e8f9',
+        brightWhite: '#f8fafc',
       },
     });
 
@@ -55,7 +58,6 @@ export default function TerminalComponent({ active }: TerminalProps) {
     xtermRef.current = xterm;
     fitAddonRef.current = fitAddon;
 
-    // Connect WebSocket
     const token = localStorage.getItem('access_token');
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/terminal?token=${token}`);
@@ -64,7 +66,6 @@ export default function TerminalComponent({ active }: TerminalProps) {
 
     ws.onopen = () => {
       fitAddon.fit();
-      // Send initial resize
       const dims = fitAddon.proposeDimensions();
       if (dims) {
         ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
@@ -80,17 +81,15 @@ export default function TerminalComponent({ active }: TerminalProps) {
     };
 
     ws.onclose = () => {
-      xterm.write('\r\n\x1b[31m[Terminal disconnected]\x1b[0m\r\n');
+      xterm.write('\r\n\x1b[38;2;248;113;113m[Terminal disconnected]\x1b[0m\r\n');
     };
 
-    // Terminal input → WebSocket
     xterm.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(new TextEncoder().encode(data));
       }
     });
 
-    // Handle resize
     const resizeObserver = new ResizeObserver(() => {
       try {
         fitAddon.fit();
@@ -109,7 +108,6 @@ export default function TerminalComponent({ active }: TerminalProps) {
     };
   }, []);
 
-  // Re-fit when panel becomes active
   useEffect(() => {
     if (active && fitAddonRef.current) {
       setTimeout(() => fitAddonRef.current?.fit(), 50);
@@ -117,8 +115,18 @@ export default function TerminalComponent({ active }: TerminalProps) {
   }, [active]);
 
   return (
-    <div className="h-full" style={{ background: '#0d1117' }}>
-      <div ref={termRef} className="h-full" />
+    <div className="h-full flex flex-col">
+      {/* Terminal header */}
+      <div className="workspace-tab-bar" style={{ padding: '6px 8px 0' }}>
+        <div className="workspace-tab active" style={{ cursor: 'default', fontSize: '11px', padding: '6px 12px' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4,17 10,11 4,5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+          Terminal
+        </div>
+      </div>
+      <div ref={termRef} className="flex-1" style={{ background: '#0a0a1a' }} />
     </div>
   );
 }
