@@ -173,11 +173,11 @@ export default function Login() {
           {!showTotp ? (
             <form onSubmit={handleLogin} className="login-form" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
-                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', paddingLeft: '12px' }}>Username</label>
+                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)', paddingLeft: '12px' }}>Username</label>
                 <PillInput type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Enter username" autoFocus required />
               </div>
               <div>
-                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', paddingLeft: '12px' }}>Password</label>
+                <label className="login-label" style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)', paddingLeft: '12px' }}>Password</label>
                 <PillInput
                   type={showPassword ? 'text' : 'password'}
                   value={password}
