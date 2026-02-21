@@ -12,9 +12,10 @@ export default function LayoutRenderer({ node }: LayoutRendererProps) {
   const { visibility, updateSizes } = useLayoutStore();
 
   if (node.type === 'panel') {
-    const isVisible = visibility[node.panelId];
-    if (!isVisible) return null;
-    return <DroppablePanel panelId={node.panelId} />;
+    // Check if any panelId in this node is visible
+    const hasVisible = node.panelIds.some((id) => visibility[id]);
+    if (!hasVisible) return null;
+    return <DroppablePanel node={node} />;
   }
 
   // GroupNode — render Group with children
@@ -24,7 +25,7 @@ export default function LayoutRenderer({ node }: LayoutRendererProps) {
   const visibleChildren: { child: LayoutNode; index: number }[] = [];
   for (let i = 0; i < node.children.length; i++) {
     const child = node.children[i];
-    if (child.type === 'panel' && !visibility[child.panelId]) continue;
+    if (child.type === 'panel' && !child.panelIds.some((id) => visibility[id])) continue;
     // For groups, check if any descendant panel is visible
     if (child.type === 'group' && !hasVisiblePanel(child, visibility)) continue;
     visibleChildren.push({ child, index: i });
@@ -42,22 +43,19 @@ export default function LayoutRenderer({ node }: LayoutRendererProps) {
   const total = visibleSizes.reduce((a, b) => a + b, 0);
   const normalizedSizes = visibleSizes.map((s) => (s / total) * 100);
 
-  // Build defaultLayout as { panelId: percentage } object
+  // Build defaultLayout as { id: percentage } object
   const defaultLayout: Record<string, number> = {};
   for (let i = 0; i < visibleChildren.length; i++) {
     const child = visibleChildren[i].child;
-    const panelKey = child.type === 'panel' ? child.panelId : child.id;
-    defaultLayout[panelKey] = normalizedSizes[i];
+    defaultLayout[child.id] = normalizedSizes[i];
   }
 
   const handleLayoutChanged = (layout: Record<string, number>) => {
-    // Map the layout object back to sizes array for the full node
     const newSizes = [...node.sizes];
     for (let i = 0; i < visibleChildren.length; i++) {
       const child = visibleChildren[i].child;
-      const panelKey = child.type === 'panel' ? child.panelId : child.id;
-      if (panelKey in layout) {
-        newSizes[visibleChildren[i].index] = layout[panelKey];
+      if (child.id in layout) {
+        newSizes[visibleChildren[i].index] = layout[child.id];
       }
     }
     updateSizes(node.id, newSizes);
@@ -72,7 +70,7 @@ export default function LayoutRenderer({ node }: LayoutRendererProps) {
     >
       {visibleChildren.map((vc, idx) => (
         <PanelWithResize
-          key={vc.child.type === 'panel' ? vc.child.panelId : vc.child.id}
+          key={vc.child.id}
           child={vc.child}
           defaultSize={normalizedSizes[idx]}
           direction={orientation}
@@ -95,14 +93,12 @@ function PanelWithResize({
   direction: 'horizontal' | 'vertical';
   isLast: boolean;
 }) {
-  const panelId = child.type === 'panel' ? child.panelId : child.id;
-
   return (
     <>
       <Panel
         defaultSize={`${defaultSize}%`}
         minSize="5%"
-        id={panelId}
+        id={child.id}
       >
         <LayoutRenderer node={child} />
       </Panel>
@@ -118,6 +114,6 @@ function hasVisiblePanel(
   node: LayoutNode,
   visibility: Record<string, boolean>,
 ): boolean {
-  if (node.type === 'panel') return visibility[node.panelId] ?? true;
+  if (node.type === 'panel') return node.panelIds.some((id) => visibility[id] ?? true);
   return node.children.some((child) => hasVisiblePanel(child, visibility));
 }

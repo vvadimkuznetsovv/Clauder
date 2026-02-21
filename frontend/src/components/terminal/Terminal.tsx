@@ -115,18 +115,6 @@ export default function TerminalComponent({ active }: TerminalProps) {
   }, [active]);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Terminal header */}
-      <div className="workspace-tab-bar" style={{ padding: '6px 8px 0' }}>
-        <div className="workspace-tab active" style={{ cursor: 'default', fontSize: '11px', padding: '6px 12px' }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="4,17 10,11 4,5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
-          </svg>
-          Terminal
-        </div>
-      </div>
-      <div ref={termRef} className="flex-1" style={{ background: '#0a0a1a' }} />
-    </div>
+    <div ref={termRef} className="h-full" style={{ background: '#0a0a1a' }} />
   );
 }

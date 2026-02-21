@@ -2,8 +2,9 @@ import type { PanelId } from '../../store/layoutUtils';
 import { useLayoutStore } from '../../store/layoutStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import ChatPanel from '../chat/ChatPanel';
-import FileTree from '../files/FileTree';
+import EditorPanel from '../editor/EditorPanel';
 import CodeEditor from '../editor/CodeEditor';
+import PreviewPanel from '../preview/PreviewPanel';
 import TerminalComponent from '../terminal/Terminal';
 
 const panelIcons: Record<PanelId, React.ReactNode> = {
@@ -23,6 +24,12 @@ const panelIcons: Record<PanelId, React.ReactNode> = {
       <polyline points="8 6 2 12 8 18" />
     </svg>
   ),
+  preview: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
   terminal: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="4 17 10 11 4 5" />
@@ -34,7 +41,8 @@ const panelIcons: Record<PanelId, React.ReactNode> = {
 export const panelTitles: Record<PanelId, string> = {
   chat: 'Chat',
   files: 'File Manager',
-  editor: 'Code Editor',
+  editor: 'Editor',
+  preview: 'Preview',
   terminal: 'Terminal',
 };
 
@@ -42,7 +50,7 @@ export { panelIcons };
 
 export default function PanelContent({ panelId }: { panelId: PanelId }) {
   const { visibility, toggleVisibility } = useLayoutStore();
-  const { activeSession, editingFile, sidebarOpen, toolbarOpen, setSidebarOpen, setToolbarOpen, setEditingFile } = useWorkspaceStore();
+  const { activeSession, sidebarOpen, toolbarOpen, setSidebarOpen, setToolbarOpen, openTabs, activeTabId } = useWorkspaceStore();
 
   switch (panelId) {
     case 'chat':
@@ -112,7 +120,7 @@ export default function PanelContent({ panelId }: { panelId: PanelId }) {
               padding: toolbarOpen ? '8px 12px' : '0 12px',
             }}
           >
-            {(['files', 'editor', 'terminal'] as PanelId[]).map((panel) => (
+            {(['files', 'editor', 'preview', 'terminal'] as PanelId[]).map((panel) => (
               <button
                 key={panel}
                 type="button"
@@ -146,17 +154,20 @@ export default function PanelContent({ panelId }: { panelId: PanelId }) {
       );
 
     case 'files':
-      return (
-        <div className="h-full overflow-hidden">
-          <FileTree
-            rootPath={activeSession?.working_directory}
-            onFileSelect={(path) => setEditingFile(path)}
-          />
-        </div>
-      );
+      return <EditorPanel />;
 
-    case 'editor':
-      return <CodeEditor filePath={editingFile} />;
+    case 'editor': {
+      const activeTab = openTabs.find((t) => t.id === activeTabId) || null;
+      return (
+        <CodeEditor
+          filePath={activeTab?.filePath || null}
+          tabId={activeTab?.id || null}
+        />
+      );
+    }
+
+    case 'preview':
+      return <PreviewPanel />;
 
     case 'terminal':
       return <TerminalComponent active={visibility.terminal} />;

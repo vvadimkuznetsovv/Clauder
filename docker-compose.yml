@@ -6,16 +6,15 @@ services:
       POSTGRES_USER: ${DB_USER:-clauder}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-clauder}
       POSTGRES_DB: ${DB_NAME:-clauder}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   app:
+    image: clauder:latest
     build: .
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "127.0.0.1:${PORT:-8080}:8080"
     depends_on:
       - postgres
     env_file:
@@ -23,8 +22,12 @@ services:
     environment:
       DB_HOST: postgres
     volumes:
-      - workspace:/home/clauder/workspace
+      - /home/clauder/workspace:/home/clauder/workspace
+      - /tmp/clauder:/tmp
+      - /home/clauder/.gitconfig:/root/.gitconfig:ro
+      - /home/clauder/.ssh:/root/.ssh:ro
+      - usr_local:/usr/local
 
 volumes:
   postgres_data:
-  workspace:
+  usr_local:

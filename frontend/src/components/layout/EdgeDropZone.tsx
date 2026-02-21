@@ -2,7 +2,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { useLayoutStore } from '../../store/layoutStore';
 
 interface EdgeDropZoneProps {
-  edge: 'left' | 'right';
+  edge: 'left' | 'right' | 'top' | 'bottom';
 }
 
 export default function EdgeDropZone({ edge }: EdgeDropZoneProps) {

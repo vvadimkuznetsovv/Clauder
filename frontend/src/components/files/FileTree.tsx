@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
-import { listFiles, type FileEntry } from '../../api/files';
+import { listFiles, deleteFile, type FileEntry } from '../../api/files';
 import FileTreeItem from './FileTreeItem';
+import toast from 'react-hot-toast';
 
 interface FileTreeProps {
   rootPath?: string;
   onFileSelect: (path: string) => void;
+  onFileOpenNewTab?: (path: string) => void;
 }
 
-export default function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
+export default function FileTree({ rootPath, onFileSelect, onFileOpenNewTab }: FileTreeProps) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [currentPath, setCurrentPath] = useState(rootPath || '');
   const [loading, setLoading] = useState(false);
@@ -37,6 +39,22 @@ export default function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
     }
   };
 
+  const handleContextAction = (action: string, file: FileEntry) => {
+    switch (action) {
+      case 'open-new-tab':
+        onFileOpenNewTab?.(file.path);
+        break;
+      case 'delete':
+        deleteFile(file.path)
+          .then(() => {
+            toast.success('File deleted');
+            loadFiles(currentPath);
+          })
+          .catch(() => toast.error('Failed to delete file'));
+        break;
+    }
+  };
+
   const goUp = () => {
     const parent = currentPath.split('/').slice(0, -1).join('/');
     if (parent) loadFiles(parent);
@@ -61,6 +79,7 @@ export default function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
         }}
       >
         <button
+          type="button"
           onClick={goUp}
           className="hover:opacity-70 transition-opacity px-1"
           title="Go up"
@@ -69,6 +88,7 @@ export default function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
         </button>
         <span className="truncate flex-1 font-mono">{currentPath}</span>
         <button
+          type="button"
           onClick={() => loadFiles(currentPath)}
           className="hover:opacity-70 transition-opacity px-1"
           title="Refresh"
@@ -93,6 +113,7 @@ export default function FileTree({ rootPath, onFileSelect }: FileTreeProps) {
               key={file.path}
               file={file}
               onClick={() => handleClick(file)}
+              onContextAction={handleContextAction}
             />
           ))
         )}

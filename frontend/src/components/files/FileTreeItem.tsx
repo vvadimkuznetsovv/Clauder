@@ -1,8 +1,11 @@
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { FileEntry } from '../../api/files';
 
 interface FileTreeItemProps {
   file: FileEntry;
   onClick: () => void;
+  onContextAction?: (action: string, file: FileEntry) => void;
 }
 
 const FILE_ICONS: Record<string, string> = {
@@ -58,34 +61,80 @@ function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + 'M';
 }
 
-export default function FileTreeItem({ file, onClick }: FileTreeItemProps) {
+export default function FileTreeItem({ file, onClick, onContextAction }: FileTreeItemProps) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (file.is_dir || !onContextAction) return;
+    e.preventDefault();
+    // Clamp position to keep menu on screen
+    const x = Math.min(e.clientX, window.innerWidth - 180);
+    const y = Math.min(e.clientY, window.innerHeight - 100);
+    setContextMenu({ x, y });
+  };
+
+  // Close on any click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [contextMenu]);
+
   return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-all duration-150"
-      style={{
-        color: 'var(--text-primary)',
-        background: 'transparent',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--glass-hover)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      <span
-        className="w-5 text-[10px] font-mono text-center shrink-0 font-bold"
-        style={{ color: getColor(file) }}
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        onContextMenu={handleContextMenu}
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-all duration-150"
+        style={{
+          color: 'var(--text-primary)',
+          background: 'transparent',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--glass-hover)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+        }}
       >
-        {getIcon(file)}
-      </span>
-      <span className="truncate flex-1">{file.name}</span>
-      {!file.is_dir && (
-        <span className="text-xs shrink-0 font-mono" style={{ color: 'var(--text-tertiary)' }}>
-          {formatSize(file.size)}
+        <span
+          className="w-5 text-[10px] font-mono text-center shrink-0 font-bold"
+          style={{ color: getColor(file) }}
+        >
+          {getIcon(file)}
         </span>
+        <span className="truncate flex-1">{file.name}</span>
+        {!file.is_dir && (
+          <span className="text-xs shrink-0 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+            {formatSize(file.size)}
+          </span>
+        )}
+      </button>
+
+      {contextMenu && createPortal(
+        <div
+          className="context-menu"
+          style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+        >
+          <button
+            type="button"
+            className="context-menu-item"
+            onClick={() => { onContextAction?.('open-new-tab', file); setContextMenu(null); }}
+          >
+            Open in New Tab
+          </button>
+          <button
+            type="button"
+            className="context-menu-item danger"
+            onClick={() => { onContextAction?.('delete', file); setContextMenu(null); }}
+          >
+            Delete
+          </button>
+        </div>,
+        document.body,
       )}
-    </button>
+    </>
   );
 }

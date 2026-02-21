@@ -8,12 +8,13 @@ import {
   useSensors,
   useDraggable,
   useDroppable,
+  pointerWithin,
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '../hooks/useAuth';
 import { useLayoutStore, type PanelId } from '../store/layoutStore';
+import { findPanelNode } from '../store/layoutUtils';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import Sidebar from '../components/layout/Sidebar';
 import LayoutRenderer from '../components/layout/LayoutRenderer';
@@ -29,10 +30,11 @@ export default function Workspace() {
     visibility,
     dnd,
     mobilePanels,
-    swapPanels,
+    mergePanels,
+    splitPanel,
     movePanelToEdge,
     setDragging,
-    openMobilePanel,
+    setMobilePanels,
     closeMobilePanel,
   } = useLayoutStore();
 
@@ -67,26 +69,63 @@ export default function Workspace() {
     const draggedPanelId = String(active.id) as PanelId;
     const targetId = String(over.id);
 
-    // Edge drop — create new column
-    if (targetId === 'edge-left') {
-      movePanelToEdge(draggedPanelId, 'left');
-      return;
-    }
-    if (targetId === 'edge-right') {
-      movePanelToEdge(draggedPanelId, 'right');
+    // Edge drop — create new column or row
+    const edgeMatch = targetId.match(/^edge-(left|right|top|bottom)$/);
+    if (edgeMatch) {
+      movePanelToEdge(draggedPanelId, edgeMatch[1] as 'left' | 'right' | 'top' | 'bottom');
       return;
     }
 
-    // Panel drop — swap panels
-    if (targetId.startsWith('panel-')) {
-      const targetPanelId = targetId.replace('panel-', '') as PanelId;
-      if (targetPanelId !== draggedPanelId) {
-        swapPanels(draggedPanelId, targetPanelId);
-      }
+    // Directional split — drop on top/bottom/left/right zone
+    const splitMatch = targetId.match(/^split-(top|bottom|left|right)-(.+)$/);
+    if (splitMatch) {
+      const [, direction, nodeId] = splitMatch;
+      splitPanel(draggedPanelId, nodeId, direction as 'top' | 'bottom' | 'left' | 'right');
+      return;
     }
-  }, [swapPanels, movePanelToEdge, setDragging]);
 
-  // Mobile DnD handlers
+    // Center drop — merge into target node's tabs
+    if (targetId.startsWith('merge-')) {
+      const nodeId = targetId.replace('merge-', '');
+      const sourceNode = findPanelNode(layout, draggedPanelId);
+      if (sourceNode && sourceNode.id === nodeId) return;
+      mergePanels(draggedPanelId, nodeId);
+    }
+  }, [layout, mergePanels, splitPanel, movePanelToEdge, setDragging]);
+
+  // All panel IDs and which are visible (for mobile tab bars)
+  const allPanels: PanelId[] = ['chat', 'files', 'editor', 'preview', 'terminal'];
+  const visibleMobilePanels = allPanels.filter((p) => visibility[p]);
+
+  // Mobile tab selection — switch panel in a slot, or swap with other slot
+  const handleMobileTabSelect = useCallback((slotIndex: number, panelId: PanelId) => {
+    if (mobilePanels[slotIndex] === panelId) return;
+
+    const otherIndex = mobilePanels.indexOf(panelId);
+    const newPanels = [...mobilePanels];
+
+    if (otherIndex >= 0) {
+      // Panel is in the other slot → swap
+      newPanels[otherIndex] = mobilePanels[slotIndex];
+      newPanels[slotIndex] = panelId;
+    } else {
+      // Panel not in any slot → replace this slot
+      newPanels[slotIndex] = panelId;
+    }
+
+    setMobilePanels(newPanels);
+  }, [mobilePanels, setMobilePanels]);
+
+  // Mobile: add a second slot
+  const handleMobileSplit = useCallback(() => {
+    if (mobilePanels.length >= 2) return;
+    const available = visibleMobilePanels.filter((p) => !mobilePanels.includes(p));
+    if (available.length > 0) {
+      setMobilePanels([...mobilePanels, available[0]]);
+    }
+  }, [mobilePanels, visibleMobilePanels, setMobilePanels]);
+
+  // Mobile DnD handlers — drag to swap slot positions
   const handleMobileDragStart = useCallback((event: DragStartEvent) => {
     setActiveDragId(String(event.active.id));
   }, []);
@@ -94,21 +133,20 @@ export default function Workspace() {
   const handleMobileDragEnd = useCallback((event: DragEndEvent) => {
     setActiveDragId(null);
     const { active, over } = event;
-    if (!over) return;
+    if (!over || mobilePanels.length < 2) return;
 
-    const panelId = String(active.id).replace('mobile-tab-', '') as PanelId;
-    const dropZone = String(over.id);
+    const sourceIdx = parseInt(String(active.id).replace('mobile-drag-', ''), 10);
+    const targetId = String(over.id);
 
-    if (dropZone === 'mobile-drop-top') {
-      openMobilePanel(panelId, 'top');
-    } else if (dropZone === 'mobile-drop-bottom') {
-      openMobilePanel(panelId, 'bottom');
+    if (targetId.startsWith('mobile-slot-')) {
+      const targetIdx = parseInt(targetId.replace('mobile-slot-', ''), 10);
+      if (sourceIdx !== targetIdx) {
+        const newPanels = [...mobilePanels];
+        [newPanels[sourceIdx], newPanels[targetIdx]] = [newPanels[targetIdx], newPanels[sourceIdx]];
+        setMobilePanels(newPanels);
+      }
     }
-  }, [openMobilePanel]);
-
-  // Which panels are not currently in mobilePanels (available as tabs)
-  const allPanels: PanelId[] = ['chat', 'files', 'editor', 'terminal'];
-  const mobileTabs = allPanels.filter((p) => !mobilePanels.includes(p));
+  }, [mobilePanels, setMobilePanels]);
 
   return (
     <div className="h-dvh relative overflow-hidden">
@@ -136,42 +174,53 @@ export default function Workspace() {
       </div>
 
       {/* === DESKTOP LAYOUT === */}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="hidden lg:flex h-full relative z-10 p-4 gap-0">
-          {/* Edge drop zone — left */}
-          <EdgeDropZone edge="left" />
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="hidden lg:flex flex-col h-full relative z-10 p-4">
+          {/* Global panel bar — appears when Chat is hidden */}
+          {!visibility.chat && <GlobalPanelBar />}
 
-          {/* Sidebar */}
-          <div
-            style={{
-              width: sidebarOpen ? '260px' : '0px',
-              opacity: sidebarOpen ? 1 : 0,
-              overflow: 'hidden',
-              transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease',
-              flexShrink: 0,
-              marginRight: sidebarOpen ? '12px' : '0px',
-            }}
-          >
-            <div className="workspace-glass-panel h-full" style={{ width: '260px' }}>
-              <div className="workspace-glass-panel-shimmer" />
-              <div className="workspace-glass-panel-content">
-                <Sidebar
-                  activeSessionId={activeSession?.id || null}
-                  onSelectSession={setActiveSession as (s: ChatSession | null) => void}
-                  isOpen={true}
-                  onClose={() => setSidebarOpen(false)}
-                />
+          {/* Edge drop zone — top */}
+          <EdgeDropZone edge="top" />
+
+          <div className="flex flex-1 min-h-0 gap-0">
+            {/* Edge drop zone — left */}
+            <EdgeDropZone edge="left" />
+
+            {/* Sidebar */}
+            <div
+              style={{
+                width: sidebarOpen ? '260px' : '0px',
+                opacity: sidebarOpen ? 1 : 0,
+                overflow: 'hidden',
+                transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease',
+                flexShrink: 0,
+                marginRight: sidebarOpen ? '12px' : '0px',
+              }}
+            >
+              <div className="workspace-glass-panel h-full" style={{ width: '260px' }}>
+                <div className="workspace-glass-panel-shimmer" />
+                <div className="workspace-glass-panel-content">
+                  <Sidebar
+                    activeSessionId={activeSession?.id || null}
+                    onSelectSession={setActiveSession as (s: ChatSession | null) => void}
+                    isOpen={true}
+                    onClose={() => setSidebarOpen(false)}
+                  />
+                </div>
               </div>
             </div>
+
+            {/* Main layout area — recursive renderer */}
+            <div className="flex-1 min-w-0 h-full">
+              <LayoutRenderer node={layout} />
+            </div>
+
+            {/* Edge drop zone — right */}
+            <EdgeDropZone edge="right" />
           </div>
 
-          {/* Main layout area — recursive renderer */}
-          <div className="flex-1 min-w-0 h-full">
-            <LayoutRenderer node={layout} />
-          </div>
-
-          {/* Edge drop zone — right */}
-          <EdgeDropZone edge="right" />
+          {/* Edge drop zone — bottom */}
+          <EdgeDropZone edge="bottom" />
         </div>
 
         {/* Desktop DragOverlay */}
@@ -190,87 +239,29 @@ export default function Workspace() {
       </DndContext>
 
       {/* === MOBILE LAYOUT === */}
-      <DndContext sensors={sensors} onDragStart={handleMobileDragStart} onDragEnd={handleMobileDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleMobileDragStart} onDragEnd={handleMobileDragEnd}>
         <div className="flex lg:hidden flex-col h-full relative z-10">
-          {/* Panels area */}
+          {/* Panels — each slot has a tab bar + content */}
           <div className="flex-1 overflow-hidden p-2 flex flex-col gap-2">
-            {/* Drop zone: top (visible only when dragging) */}
-            {activeDragId?.startsWith('mobile-tab-') && (
-              <MobileDropZone id="mobile-drop-top" label="Drop here — top" />
-            )}
-
-            {/* Render open panels */}
-            {mobilePanels.map((panelId) => (
-              <div
-                key={panelId}
-                className="workspace-glass-panel overflow-hidden"
-                style={{ flex: '1 1 0%', minHeight: 0 }}
-              >
-                <div className="workspace-glass-panel-shimmer" />
-                <div className="workspace-glass-panel-content flex flex-col h-full">
-                  {/* Panel header with close button (if more than 1 panel) */}
-                  <div className="mobile-panel-header">
-                    <span className="flex items-center gap-2">
-                      {panelIcons[panelId]}
-                      <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                        {panelTitles[panelId]}
-                      </span>
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {panelId === 'chat' && (
-                        <button
-                          type="button"
-                          onClick={() => setSidebarOpen(true)}
-                          className="mobile-panel-header-btn"
-                          title="Sessions"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                            <line x1="3" y1="6" x2="21" y2="6" />
-                            <line x1="3" y1="12" x2="21" y2="12" />
-                            <line x1="3" y1="18" x2="21" y2="18" />
-                          </svg>
-                        </button>
-                      )}
-                      {mobilePanels.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => closeMobilePanel(panelId)}
-                          className="mobile-panel-header-btn"
-                          title="Close panel"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <PanelContent panelId={panelId} />
-                  </div>
-                </div>
-              </div>
+            {mobilePanels.map((panelId, index) => (
+              <MobileSlot
+                key={`slot-${index}`}
+                index={index}
+                panelId={panelId}
+                visiblePanels={visibleMobilePanels}
+                onSelectPanel={(pid) => handleMobileTabSelect(index, pid)}
+                canClose={mobilePanels.length > 1}
+                onClose={() => closeMobilePanel(panelId)}
+                canSplit={mobilePanels.length < 2 && visibleMobilePanels.filter((p) => !mobilePanels.includes(p)).length > 0}
+                onSplit={handleMobileSplit}
+              />
             ))}
-
-            {/* Drop zone: bottom (visible only when dragging) */}
-            {activeDragId?.startsWith('mobile-tab-') && (
-              <MobileDropZone id="mobile-drop-bottom" label="Drop here — bottom" />
-            )}
           </div>
 
-          {/* Mobile tab bar — draggable tabs for panels not currently open */}
-          {mobileTabs.length > 0 && (
-            <div className="mobile-tab-bar">
-              {mobileTabs.map((panelId) => (
-                <MobileDraggableTab
-                  key={panelId}
-                  panelId={panelId}
-                  icon={panelIcons[panelId]}
-                  title={panelTitles[panelId]}
-                  onTap={() => openMobilePanel(panelId, 'bottom')}
-                />
-              ))}
+          {/* Global panel bar — appears when Chat is hidden */}
+          {!visibility.chat && (
+            <div className="p-2 pt-0">
+              <GlobalPanelBar />
             </div>
           )}
 
@@ -285,67 +276,166 @@ export default function Workspace() {
 
         {/* Mobile DragOverlay */}
         <DragOverlay>
-          {activeDragId?.startsWith('mobile-tab-') && (
-            <div className="mobile-tab-overlay">
-              {panelIcons[activeDragId.replace('mobile-tab-', '') as PanelId]}
-              <span>{panelTitles[activeDragId.replace('mobile-tab-', '') as PanelId]}</span>
-            </div>
-          )}
+          {activeDragId?.startsWith('mobile-drag-') && (() => {
+            const idx = parseInt(activeDragId.replace('mobile-drag-', ''), 10);
+            const pid = mobilePanels[idx];
+            if (!pid) return null;
+            return (
+              <div className="mobile-tab-overlay">
+                {panelIcons[pid]}
+                <span>{panelTitles[pid]}</span>
+              </div>
+            );
+          })()}
         </DragOverlay>
       </DndContext>
     </div>
   );
 }
 
-// === Mobile helper components ===
+// === Global panel bar — shown when Chat (with its toolbar) is hidden ===
 
-function MobileDropZone({ id, label }: { id: string; label: string }) {
-  const { isOver, setNodeRef } = useDroppable({ id });
+function GlobalPanelBar() {
+  const { visibility, toggleVisibility } = useLayoutStore();
+  const { sidebarOpen, setSidebarOpen } = useWorkspaceStore();
+  const allPanels: PanelId[] = ['chat', 'files', 'editor', 'preview', 'terminal'];
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`mobile-drop-zone ${isOver ? 'active' : ''}`}
-    >
-      <span>{label}</span>
+    <div className="global-panel-bar">
+      <button
+        type="button"
+        className="global-panel-bar-sidebar-btn"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        title={sidebarOpen ? 'Hide sessions' : 'Show sessions'}
+        style={{
+          color: sidebarOpen ? 'var(--accent-bright)' : undefined,
+          background: sidebarOpen ? 'rgba(127, 0, 255, 0.15)' : undefined,
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          {sidebarOpen ? (
+            <>
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </>
+          ) : (
+            <>
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </>
+          )}
+        </svg>
+      </button>
+      <div className="global-panel-bar-divider" />
+      {allPanels.map((panel) => (
+        <button
+          key={panel}
+          type="button"
+          className={`workspace-toolbar-btn ${visibility[panel] ? 'active' : ''}`}
+          onClick={() => toggleVisibility(panel)}
+        >
+          {panelIcons[panel]}
+          {panelTitles[panel]}
+        </button>
+      ))}
     </div>
   );
 }
 
-function MobileDraggableTab({
-  panelId,
-  icon,
-  title,
-  onTap,
-}: {
-  panelId: PanelId;
-  icon: React.ReactNode;
-  title: string;
-  onTap: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `mobile-tab-${panelId}`,
-  });
+// === Mobile helper components ===
 
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    opacity: isDragging ? 0.4 : 1,
-  };
+function MobileSlot({
+  index,
+  panelId,
+  visiblePanels,
+  onSelectPanel,
+  canClose,
+  onClose,
+  canSplit,
+  onSplit,
+}: {
+  index: number;
+  panelId: PanelId;
+  visiblePanels: PanelId[];
+  onSelectPanel: (pid: PanelId) => void;
+  canClose: boolean;
+  onClose: () => void;
+  canSplit: boolean;
+  onSplit: () => void;
+}) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `mobile-slot-${index}` });
+  const { attributes, listeners, setNodeRef: setDragRef } = useDraggable({ id: `mobile-drag-${index}` });
 
   return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      className="mobile-tab-pill"
-      style={style}
-      onClick={() => {
-        if (!isDragging) onTap();
-      }}
-      {...listeners}
-      {...attributes}
+    <div
+      ref={setDropRef}
+      className={`workspace-glass-panel overflow-hidden ${isOver ? 'mobile-slot-drop-active' : ''}`}
+      style={{ flex: '1 1 0%', minHeight: 0 }}
     >
-      {icon}
-      <span>{title}</span>
-    </button>
+      <div className="workspace-glass-panel-shimmer" />
+      <div className="workspace-glass-panel-content flex flex-col h-full">
+        {/* Slot header: drag grip + scrollable tabs + actions */}
+        <div className="mobile-slot-header">
+          <div
+            ref={setDragRef}
+            className="mobile-slot-drag"
+            {...listeners}
+            {...attributes}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 16" fill="currentColor" opacity="0.3">
+              <circle cx="2" cy="4" r="1.2" />
+              <circle cx="8" cy="4" r="1.2" />
+              <circle cx="2" cy="10" r="1.2" />
+              <circle cx="8" cy="10" r="1.2" />
+            </svg>
+          </div>
+          <div className="mobile-slot-tabs">
+            {visiblePanels.map((pid) => (
+              <button
+                key={pid}
+                type="button"
+                className={`mobile-slot-tab ${pid === panelId ? 'active' : ''}`}
+                onClick={() => onSelectPanel(pid)}
+              >
+                {panelIcons[pid]}
+                <span>{panelTitles[pid]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0 pr-1">
+            {canSplit && (
+              <button
+                type="button"
+                className="mobile-panel-header-btn"
+                onClick={onSplit}
+                title="Split view"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                </svg>
+              </button>
+            )}
+            {canClose && (
+              <button
+                type="button"
+                className="mobile-panel-header-btn"
+                onClick={onClose}
+                title="Close panel"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <PanelContent panelId={panelId} />
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,11 +1,12 @@
 // Pure functions for layout tree manipulation
 
-export type PanelId = 'chat' | 'files' | 'editor' | 'terminal';
+export type PanelId = 'chat' | 'files' | 'editor' | 'preview' | 'terminal';
 
 export interface PanelNode {
   type: 'panel';
   id: string;
-  panelId: PanelId;
+  panelIds: PanelId[];
+  activeIndex: number;
 }
 
 export interface GroupNode {
@@ -27,26 +28,27 @@ export const DEFAULT_LAYOUT: LayoutNode = {
   type: 'group',
   id: 'root',
   direction: 'horizontal',
-  sizes: [55, 45],
+  sizes: [25, 50, 25],
   children: [
-    { type: 'panel', id: 'node-chat', panelId: 'chat' },
+    { type: 'panel', id: 'node-chat', panelIds: ['chat'], activeIndex: 0 },
+    {
+      type: 'group',
+      id: 'group-center',
+      direction: 'vertical',
+      sizes: [65, 35],
+      children: [
+        { type: 'panel', id: 'node-files', panelIds: ['files'], activeIndex: 0 },
+        { type: 'panel', id: 'node-terminal', panelIds: ['terminal'], activeIndex: 0 },
+      ],
+    },
     {
       type: 'group',
       id: 'group-right',
       direction: 'vertical',
-      sizes: [65, 35],
+      sizes: [50, 50],
       children: [
-        {
-          type: 'group',
-          id: 'group-right-top',
-          direction: 'horizontal',
-          sizes: [35, 65],
-          children: [
-            { type: 'panel', id: 'node-files', panelId: 'files' },
-            { type: 'panel', id: 'node-editor', panelId: 'editor' },
-          ],
-        },
-        { type: 'panel', id: 'node-terminal', panelId: 'terminal' },
+        { type: 'panel', id: 'node-editor', panelIds: ['editor'], activeIndex: 0 },
+        { type: 'panel', id: 'node-preview', panelIds: ['preview'], activeIndex: 0 },
       ],
     },
   ],
@@ -55,7 +57,7 @@ export const DEFAULT_LAYOUT: LayoutNode = {
 // Deep clone a layout tree
 export function cloneTree(node: LayoutNode): LayoutNode {
   if (node.type === 'panel') {
-    return { ...node };
+    return { ...node, panelIds: [...node.panelIds] };
   }
   return {
     ...node,
@@ -64,13 +66,13 @@ export function cloneTree(node: LayoutNode): LayoutNode {
   };
 }
 
-// Find a panel node in the tree
+// Find a panel node containing a specific panelId
 export function findPanelNode(
   tree: LayoutNode,
   panelId: PanelId,
 ): PanelNode | null {
   if (tree.type === 'panel') {
-    return tree.panelId === panelId ? tree : null;
+    return tree.panelIds.includes(panelId) ? tree : null;
   }
   for (const child of tree.children) {
     const found = findPanelNode(child, panelId);
@@ -79,29 +81,20 @@ export function findPanelNode(
   return null;
 }
 
-// Swap two panels' identities (structure stays the same)
-export function swapPanelIds(tree: LayoutNode, panelA: PanelId, panelB: PanelId): LayoutNode {
-  const result = cloneTree(tree);
-
-  const nodeA = findPanelNode(result, panelA);
-  const nodeB = findPanelNode(result, panelB);
-
-  if (nodeA && nodeB) {
-    nodeA.panelId = panelB;
-    nodeB.panelId = panelA;
-    // Swap ids too for consistency
-    const tmpId = nodeA.id;
-    nodeA.id = nodeB.id;
-    nodeB.id = tmpId;
-  }
-
-  return result;
-}
-
-// Remove a panel from the tree, collapsing single-child groups
+// Remove a single panelId from the tree.
+// If the node has multiple panelIds, just removes from the array.
+// If the node has only one panelId, removes the entire node (collapsing parents).
 export function removePanelFromTree(tree: LayoutNode, panelId: PanelId): LayoutNode | null {
   if (tree.type === 'panel') {
-    return tree.panelId === panelId ? null : tree;
+    if (!tree.panelIds.includes(panelId)) return tree;
+    if (tree.panelIds.length === 1) return null; // remove entire node
+    // Remove from array, keep node
+    const newPanelIds = tree.panelIds.filter((id) => id !== panelId);
+    return {
+      ...tree,
+      panelIds: newPanelIds,
+      activeIndex: Math.min(tree.activeIndex, newPanelIds.length - 1),
+    };
   }
 
   const newChildren: LayoutNode[] = [];
@@ -133,22 +126,145 @@ export function removePanelFromTree(tree: LayoutNode, panelId: PanelId): LayoutN
   };
 }
 
-// Count top-level columns in the root horizontal group
-export function countTopLevelColumns(tree: LayoutNode): number {
-  if (tree.type === 'panel') return 1;
-  if (tree.direction === 'horizontal') return tree.children.length;
-  return 1;
+// Merge panelId into the node with the given targetNodeId
+export function mergePanelIntoNode(
+  tree: LayoutNode,
+  panelId: PanelId,
+  targetNodeId: string,
+): LayoutNode | null {
+  // Remove panelId from its current location
+  const treeWithout = removePanelFromTree(tree, panelId);
+  if (!treeWithout) return null;
+
+  // Add panelId to the target node
+  return addPanelToNodeById(treeWithout, panelId, targetNodeId);
 }
 
-// Add a column at the edge (left or right)
+function addPanelToNodeById(
+  tree: LayoutNode,
+  panelId: PanelId,
+  targetNodeId: string,
+): LayoutNode {
+  if (tree.type === 'panel') {
+    if (tree.id === targetNodeId) {
+      return {
+        ...tree,
+        panelIds: [...tree.panelIds, panelId],
+        activeIndex: tree.panelIds.length, // new tab becomes active
+      };
+    }
+    return tree;
+  }
+  return {
+    ...tree,
+    children: tree.children.map((child) =>
+      addPanelToNodeById(child, panelId, targetNodeId),
+    ),
+  };
+}
+
+// Set active tab in a panel node by nodeId and panelId
+export function setNodeActiveTab(
+  tree: LayoutNode,
+  nodeId: string,
+  panelId: PanelId,
+): LayoutNode {
+  if (tree.type === 'panel') {
+    if (tree.id === nodeId) {
+      const idx = tree.panelIds.indexOf(panelId);
+      if (idx >= 0) return { ...tree, activeIndex: idx };
+    }
+    return tree;
+  }
+  return {
+    ...tree,
+    children: tree.children.map((child) =>
+      setNodeActiveTab(child, nodeId, panelId),
+    ),
+  };
+}
+
+// Split a panel node by placing the dragged panel next to the target node.
+// direction: 'top'/'bottom' → vertical split, 'left'/'right' → horizontal split.
+// 'center' → merge into tabs (use mergePanelIntoNode instead).
+export function splitPanelAtNode(
+  tree: LayoutNode,
+  panelId: PanelId,
+  targetNodeId: string,
+  direction: 'top' | 'bottom' | 'left' | 'right',
+): LayoutNode | null {
+  // Remove panelId from current position
+  const treeWithout = removePanelFromTree(tree, panelId);
+  if (!treeWithout) return null;
+
+  const newPanel: PanelNode = {
+    type: 'panel',
+    id: generateNodeId('node'),
+    panelIds: [panelId],
+    activeIndex: 0,
+  };
+
+  const splitDirection: 'horizontal' | 'vertical' =
+    direction === 'left' || direction === 'right' ? 'horizontal' : 'vertical';
+  const insertBefore = direction === 'left' || direction === 'top';
+
+  return insertSplitAtNode(treeWithout, targetNodeId, newPanel, splitDirection, insertBefore);
+}
+
+// Recursively find the target node and wrap it in a new group with the new panel
+function insertSplitAtNode(
+  tree: LayoutNode,
+  targetNodeId: string,
+  newPanel: PanelNode,
+  direction: 'horizontal' | 'vertical',
+  insertBefore: boolean,
+): LayoutNode {
+  if (tree.type === 'panel') {
+    if (tree.id === targetNodeId) {
+      const children = insertBefore ? [newPanel, tree] : [tree, newPanel];
+      return {
+        type: 'group',
+        id: generateNodeId('group'),
+        direction,
+        children,
+        sizes: [50, 50],
+      };
+    }
+    return tree;
+  }
+
+  // Check if target is a direct child of this group with matching direction
+  // In that case, insert alongside instead of creating a nested group
+  const targetIdx = tree.children.findIndex((c) => c.id === targetNodeId);
+  if (targetIdx >= 0 && tree.direction === direction) {
+    const newChildren = [...tree.children];
+    const newSizes = [...tree.sizes];
+    const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
+    newChildren.splice(insertIdx, 0, newPanel);
+    // Give new panel 25% and scale existing
+    const existingTotal = newSizes.reduce((a, b) => a + b, 0);
+    const newSize = 25;
+    const scale = (existingTotal - newSize) / existingTotal;
+    const scaledSizes = newSizes.map((s) => Math.max(5, s * scale));
+    scaledSizes.splice(insertIdx, 0, newSize);
+    return { ...tree, children: newChildren, sizes: scaledSizes };
+  }
+
+  // Recurse into children
+  return {
+    ...tree,
+    children: tree.children.map((child) =>
+      insertSplitAtNode(child, targetNodeId, newPanel, direction, insertBefore),
+    ),
+  };
+}
+
+// Add a column at the outermost edge (left or right)
 export function addColumnAtEdge(
   tree: LayoutNode,
   panelId: PanelId,
   edge: 'left' | 'right',
 ): LayoutNode | null {
-  // Max 3 columns
-  if (countTopLevelColumns(tree) >= 3) return null;
-
   // Remove the panel from its current position
   const treeWithout = removePanelFromTree(tree, panelId);
   if (!treeWithout) return null;
@@ -156,7 +272,8 @@ export function addColumnAtEdge(
   const newPanel: PanelNode = {
     type: 'panel',
     id: generateNodeId('node'),
-    panelId,
+    panelIds: [panelId],
+    activeIndex: 0,
   };
 
   // If root is already a horizontal group, add to it
@@ -165,11 +282,11 @@ export function addColumnAtEdge(
       ? [newPanel, ...treeWithout.children]
       : [...treeWithout.children, newPanel];
 
-    // Redistribute sizes equally for the new column
+    // Redistribute sizes for the new column
     const existingTotal = treeWithout.sizes.reduce((a, b) => a + b, 0);
-    const newColumnSize = 25; // 25% for new column
-    const scale = (100 - newColumnSize) / existingTotal;
-    const scaledSizes = treeWithout.sizes.map((s) => s * scale);
+    const newColumnSize = 25;
+    const scale = (existingTotal - newColumnSize) / existingTotal;
+    const scaledSizes = treeWithout.sizes.map((s) => Math.max(5, s * scale));
     const sizes = edge === 'left'
       ? [newColumnSize, ...scaledSizes]
       : [...scaledSizes, newColumnSize];
@@ -195,9 +312,60 @@ export function addColumnAtEdge(
   };
 }
 
+// Add a row at the outermost edge (top or bottom)
+export function addRowAtEdge(
+  tree: LayoutNode,
+  panelId: PanelId,
+  edge: 'top' | 'bottom',
+): LayoutNode | null {
+  const treeWithout = removePanelFromTree(tree, panelId);
+  if (!treeWithout) return null;
+
+  const newPanel: PanelNode = {
+    type: 'panel',
+    id: generateNodeId('node'),
+    panelIds: [panelId],
+    activeIndex: 0,
+  };
+
+  // If root is already a vertical group, add to it
+  if (treeWithout.type === 'group' && treeWithout.direction === 'vertical') {
+    const children = edge === 'top'
+      ? [newPanel, ...treeWithout.children]
+      : [...treeWithout.children, newPanel];
+
+    const existingTotal = treeWithout.sizes.reduce((a, b) => a + b, 0);
+    const newRowSize = 25;
+    const scale = (existingTotal - newRowSize) / existingTotal;
+    const scaledSizes = treeWithout.sizes.map((s) => Math.max(5, s * scale));
+    const sizes = edge === 'top'
+      ? [newRowSize, ...scaledSizes]
+      : [...scaledSizes, newRowSize];
+
+    return {
+      ...treeWithout,
+      children,
+      sizes,
+    };
+  }
+
+  // Wrap in a new vertical group
+  const children = edge === 'top'
+    ? [newPanel, treeWithout]
+    : [treeWithout, newPanel];
+
+  return {
+    type: 'group',
+    id: generateNodeId('group'),
+    direction: 'vertical',
+    children,
+    sizes: edge === 'top' ? [25, 75] : [75, 25],
+  };
+}
+
 // Get all panel IDs present in the tree
 export function getAllPanelIds(tree: LayoutNode): PanelId[] {
-  if (tree.type === 'panel') return [tree.panelId];
+  if (tree.type === 'panel') return [...tree.panelIds];
   return tree.children.flatMap(getAllPanelIds);
 }
 

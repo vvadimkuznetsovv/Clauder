@@ -3,8 +3,11 @@ import {
   type PanelId,
   type LayoutNode,
   DEFAULT_LAYOUT,
-  swapPanelIds,
+  mergePanelIntoNode,
+  setNodeActiveTab,
+  splitPanelAtNode,
   addColumnAtEdge,
+  addRowAtEdge,
   updateGroupSizes,
   cloneTree,
 } from './layoutUtils';
@@ -16,6 +19,7 @@ interface PanelVisibility {
   chat: boolean;
   files: boolean;
   editor: boolean;
+  preview: boolean;
   terminal: boolean;
 }
 
@@ -33,8 +37,10 @@ interface LayoutState {
   mobilePanels: PanelId[];
 
   // Actions
-  swapPanels: (panelA: PanelId, panelB: PanelId) => void;
-  movePanelToEdge: (panelId: PanelId, edge: 'left' | 'right') => void;
+  mergePanels: (panelId: PanelId, targetNodeId: string) => void;
+  splitPanel: (panelId: PanelId, targetNodeId: string, direction: 'top' | 'bottom' | 'left' | 'right') => void;
+  setNodeActiveTab: (nodeId: string, panelId: PanelId) => void;
+  movePanelToEdge: (panelId: PanelId, edge: 'left' | 'right' | 'top' | 'bottom') => void;
   updateSizes: (groupId: string, sizes: number[]) => void;
   toggleVisibility: (panelId: PanelId) => void;
   resetLayout: () => void;
@@ -48,7 +54,7 @@ interface LayoutState {
   closeMobilePanel: (panel: PanelId) => void;
 }
 
-const STORAGE_KEY = 'clauder-layout-v2';
+const STORAGE_KEY = 'clauder-layout-v5';
 
 function loadFromStorage(): { layout?: LayoutNode; visibility?: PanelVisibility; mobilePanels?: PanelId[] } {
   try {
@@ -78,22 +84,42 @@ function saveToStorage(state: LayoutState) {
 const defaultVisibility: PanelVisibility = {
   chat: true,
   files: true,
-  editor: true,
+  editor: false,
+  preview: false,
   terminal: true,
 };
 
 const stored = loadFromStorage();
 
-export const useLayoutStore = create<LayoutState>((set, get) => ({
+export const useLayoutStore = create<LayoutState>((set) => ({
   layout: stored.layout || cloneTree(DEFAULT_LAYOUT),
   visibility: stored.visibility || { ...defaultVisibility },
   dnd: { isDragging: false, draggedPanelId: null },
   mobilePanels: stored.mobilePanels || ['chat'] as PanelId[],
 
-  swapPanels: (panelA, panelB) => {
-    if (panelA === panelB) return;
+  mergePanels: (panelId, targetNodeId) => {
     set((state) => {
-      const newLayout = swapPanelIds(state.layout, panelA, panelB);
+      const newLayout = mergePanelIntoNode(state.layout, panelId, targetNodeId);
+      if (!newLayout) return {};
+      const next = { ...state, layout: newLayout };
+      saveToStorage(next);
+      return { layout: newLayout };
+    });
+  },
+
+  splitPanel: (panelId, targetNodeId, direction) => {
+    set((state) => {
+      const newLayout = splitPanelAtNode(state.layout, panelId, targetNodeId, direction);
+      if (!newLayout) return {};
+      const next = { ...state, layout: newLayout };
+      saveToStorage(next);
+      return { layout: newLayout };
+    });
+  },
+
+  setNodeActiveTab: (nodeId, panelId) => {
+    set((state) => {
+      const newLayout = setNodeActiveTab(state.layout, nodeId, panelId);
       const next = { ...state, layout: newLayout };
       saveToStorage(next);
       return { layout: newLayout };
@@ -102,7 +128,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   movePanelToEdge: (panelId, edge) => {
     set((state) => {
-      const newLayout = addColumnAtEdge(state.layout, panelId, edge);
+      const newLayout = (edge === 'top' || edge === 'bottom')
+        ? addRowAtEdge(state.layout, panelId, edge)
+        : addColumnAtEdge(state.layout, panelId, edge);
       if (!newLayout) return {};
       const next = { ...state, layout: newLayout };
       saveToStorage(next);

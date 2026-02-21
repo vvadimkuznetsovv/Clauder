@@ -655,11 +655,18 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     background: rgba(0, 0, 0, 0.12);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, padding 0.3s ease;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.1) transparent;
   }
+  .workspace-toolbar::-webkit-scrollbar { height: 3px; }
+  .workspace-toolbar::-webkit-scrollbar-track { background: transparent; }
+  .workspace-toolbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .workspace-toolbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
   .workspace-toolbar-btn {
     display: flex;
     align-items: center;
@@ -688,6 +695,51 @@
   .workspace-toolbar-btn.active:hover {
     background: rgba(127, 0, 255, 0.18);
     border-color: rgba(127, 0, 255, 0.35);
+  }
+
+  /* Global panel bar — visible when Chat panel is hidden */
+  .global-panel-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(10, 5, 20, 0.6);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+  .global-panel-bar::-webkit-scrollbar { height: 3px; }
+  .global-panel-bar::-webkit-scrollbar-track { background: transparent; }
+  .global-panel-bar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .global-panel-bar-sidebar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .global-panel-bar-sidebar-btn:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .global-panel-bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
   }
 
   /* Drag & Drop — Panel header */
@@ -753,21 +805,53 @@
     position: relative;
     border-radius: 24px;
   }
-  .drop-zone-highlight {
+  /* Directional drop zones overlay — VS Code style */
+  .panel-drop-overlay {
     position: absolute;
     inset: 0;
-    border-radius: 24px;
-    border: 2px solid rgba(127, 0, 255, 0.4);
-    background: rgba(127, 0, 255, 0.08);
-    box-shadow: 0 0 20px rgba(127, 0, 255, 0.2), inset 0 0 20px rgba(127, 0, 255, 0.05);
-    pointer-events: none;
     z-index: 50;
-    transition: opacity 0.2s ease;
-    animation: dropZonePulse 1.5s ease-in-out infinite;
+    border-radius: 24px;
+    overflow: hidden;
   }
-  @keyframes dropZonePulse {
-    0%, 100% { opacity: 0.7; }
-    50% { opacity: 1; }
+  .panel-drop-zone {
+    position: absolute;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .panel-drop-zone-top {
+    top: 0; left: 0; right: 0; height: 30%;
+  }
+  .panel-drop-zone-bottom {
+    bottom: 0; left: 0; right: 0; height: 30%;
+  }
+  .panel-drop-zone-left {
+    top: 30%; left: 0; bottom: 30%; width: 25%;
+  }
+  .panel-drop-zone-right {
+    top: 30%; right: 0; bottom: 30%; width: 25%;
+  }
+  .panel-drop-zone-center {
+    top: 30%; left: 25%; right: 25%; bottom: 30%;
+  }
+  .panel-drop-zone.active {
+    background: rgba(127, 0, 255, 0.15);
+    box-shadow: inset 0 0 20px rgba(127, 0, 255, 0.1);
+  }
+  .panel-drop-zone-top.active {
+    border-bottom: 2px dashed rgba(127, 0, 255, 0.5);
+  }
+  .panel-drop-zone-bottom.active {
+    border-top: 2px dashed rgba(127, 0, 255, 0.5);
+  }
+  .panel-drop-zone-left.active {
+    border-right: 2px dashed rgba(127, 0, 255, 0.5);
+  }
+  .panel-drop-zone-right.active {
+    border-left: 2px dashed rgba(127, 0, 255, 0.5);
+  }
+  .panel-drop-zone-center.active {
+    background: rgba(127, 0, 255, 0.1);
+    border: 2px solid rgba(127, 0, 255, 0.4);
+    border-radius: 12px;
   }
 
   /* Drag overlay — floating panel preview while dragging */
@@ -782,14 +866,65 @@
     pointer-events: none;
   }
 
-  /* Mobile — panel header */
-  .mobile-panel-header {
+  /* Mobile — slot header with tab bar */
+  .mobile-slot-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 6px 10px;
     background: rgba(0, 0, 0, 0.15);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    min-height: 36px;
+  }
+  .mobile-slot-drag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    flex-shrink: 0;
+    cursor: grab;
+    touch-action: none;
+    color: rgba(255, 255, 255, 0.3);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .mobile-slot-drag:active { cursor: grabbing; }
+  .mobile-slot-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mobile-slot-tabs::-webkit-scrollbar { display: none; }
+  .mobile-slot-tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.35);
+    background: transparent;
+    border: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+  .mobile-slot-tab:active {
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .mobile-slot-tab.active {
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .mobile-slot-drop-active {
+    outline: 2px dashed rgba(127, 0, 255, 0.4);
+    outline-offset: -2px;
   }
   .mobile-panel-header-btn {
     display: flex;
@@ -808,66 +943,6 @@
   .mobile-panel-header-btn:active {
     color: rgba(255, 255, 255, 0.7);
     background: rgba(255, 255, 255, 0.1);
-  }
-
-  /* Mobile — tab bar (draggable pills) */
-  .mobile-tab-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.04);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .mobile-tab-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    cursor: grab;
-    white-space: nowrap;
-    touch-action: none;
-    -webkit-user-select: none;
-    user-select: none;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-  }
-  .mobile-tab-pill:active {
-    cursor: grabbing;
-    background: rgba(127, 0, 255, 0.12);
-    border-color: rgba(127, 0, 255, 0.25);
-    color: rgba(255, 255, 255, 0.8);
-  }
-
-  /* Mobile — drop zones (top/bottom) */
-  .mobile-drop-zone {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 80px;
-    border-radius: 16px;
-    border: 2px dashed rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.03);
-    color: rgba(255, 255, 255, 0.3);
-    font-size: 12px;
-    font-weight: 600;
-    transition: all 0.2s ease;
-  }
-  .mobile-drop-zone.active {
-    border-color: rgba(127, 0, 255, 0.5);
-    background: rgba(127, 0, 255, 0.1);
-    color: rgba(255, 255, 255, 0.7);
-    box-shadow: 0 0 20px rgba(127, 0, 255, 0.15);
   }
 
   /* Mobile — drag overlay for tab pills */
@@ -973,31 +1048,59 @@
      EDGE DROP ZONES — drag panel to edge for new column
      ========================================== */
   .edge-drop-zone {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    width: 40px;
     z-index: 50;
     transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+  .edge-drop-zone-left,
+  .edge-drop-zone-right {
+    width: 40px;
+    align-self: stretch;
+  }
+  .edge-drop-zone-top,
+  .edge-drop-zone-bottom {
+    height: 32px;
+    width: 100%;
   }
   .edge-drop-zone-left {
-    left: 0;
     background: linear-gradient(90deg, rgba(127, 0, 255, 0.05), transparent);
     border-right: 2px dashed rgba(127, 0, 255, 0.2);
   }
   .edge-drop-zone-right {
-    right: 0;
     background: linear-gradient(-90deg, rgba(127, 0, 255, 0.05), transparent);
     border-left: 2px dashed rgba(127, 0, 255, 0.2);
   }
-  .edge-drop-zone.active {
+  .edge-drop-zone-top {
+    background: linear-gradient(180deg, rgba(127, 0, 255, 0.05), transparent);
+    border-bottom: 2px dashed rgba(127, 0, 255, 0.2);
+  }
+  .edge-drop-zone-bottom {
+    background: linear-gradient(0deg, rgba(127, 0, 255, 0.05), transparent);
+    border-top: 2px dashed rgba(127, 0, 255, 0.2);
+  }
+  .edge-drop-zone-left.active,
+  .edge-drop-zone-right.active {
     width: 60px;
-    background: linear-gradient(90deg, rgba(127, 0, 255, 0.15), rgba(127, 0, 255, 0.03));
+  }
+  .edge-drop-zone-top.active,
+  .edge-drop-zone-bottom.active {
+    height: 48px;
+  }
+  .edge-drop-zone.active {
     border-color: rgba(127, 0, 255, 0.5);
     box-shadow: 0 0 20px rgba(127, 0, 255, 0.2);
   }
+  .edge-drop-zone-left.active {
+    background: linear-gradient(90deg, rgba(127, 0, 255, 0.15), rgba(127, 0, 255, 0.03));
+  }
   .edge-drop-zone-right.active {
     background: linear-gradient(-90deg, rgba(127, 0, 255, 0.15), rgba(127, 0, 255, 0.03));
+  }
+  .edge-drop-zone-top.active {
+    background: linear-gradient(180deg, rgba(127, 0, 255, 0.15), rgba(127, 0, 255, 0.03));
+  }
+  .edge-drop-zone-bottom.active {
+    background: linear-gradient(0deg, rgba(127, 0, 255, 0.15), rgba(127, 0, 255, 0.03));
   }
 
   /* Droppable panel wrapper */
@@ -1087,6 +1190,280 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+  /* ==========================================
+     PANEL MERGE TAB BAR — merged panels with tabs
+     ========================================== */
+  .panel-tab-bar {
+    display: flex;
+    align-items: stretch;
+    background: rgba(0, 0, 0, 0.15);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    min-height: 32px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .panel-tab-bar::-webkit-scrollbar { display: none; }
+  .panel-tab {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    background: transparent;
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: grab;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+  }
+  .panel-tab:active { cursor: grabbing; }
+  .panel-tab:hover {
+    color: rgba(255, 255, 255, 0.65);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .panel-tab.active {
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .panel-tab-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .panel-tab-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .panel-tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.2);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    opacity: 0;
+    flex-shrink: 0;
+  }
+  .panel-tab:hover .panel-tab-close { opacity: 1; }
+  .panel-tab.active .panel-tab-close { opacity: 0.6; }
+  .panel-tab-close:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 1 !important;
+  }
+
+  /* ==========================================
+     EDITOR — tab bar, tabs, file sidebar
+     ========================================== */
+  .editor-tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: rgba(0, 0, 0, 0.15);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    min-height: 36px;
+    overflow: hidden;
+  }
+  .editor-toggle-files {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    color: rgba(255, 255, 255, 0.35);
+    background: transparent;
+    border: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .editor-toggle-files:hover {
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .editor-toggle-files.active {
+    color: var(--accent-bright);
+    background: rgba(127, 0, 255, 0.1);
+  }
+  .editor-tabs-scroll {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 1;
+    min-width: 0;
+    scrollbar-width: none;
+  }
+  .editor-tabs-scroll::-webkit-scrollbar { display: none; }
+  .editor-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    height: 36px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.4);
+    background: transparent;
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .editor-tab:hover {
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .editor-tab.active {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .tab-modified-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--warning);
+    flex-shrink: 0;
+  }
+  .tab-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.25);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    flex-shrink: 0;
+    opacity: 0;
+  }
+  .editor-tab:hover .tab-close-btn { opacity: 1; }
+  .editor-tab.active .tab-close-btn { opacity: 0.7; }
+  .tab-close-btn:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 1 !important;
+  }
+
+  /* File sidebar inside editor panel */
+  .editor-file-sidebar {
+    width: 220px;
+    min-width: 160px;
+    max-width: 300px;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
+    background: rgba(0, 0, 0, 0.08);
+  }
+
+  /* ==========================================
+     CONTEXT MENU — right-click in file tree
+     ========================================== */
+  .context-menu {
+    min-width: 160px;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(20, 12, 35, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+  .context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.75);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    text-align: left;
+  }
+  .context-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.95);
+  }
+  .context-menu-item.danger {
+    color: rgba(248, 113, 113, 0.8);
+  }
+  .context-menu-item.danger:hover {
+    background: rgba(248, 113, 113, 0.12);
+    color: #f87171;
+  }
+
+  /* ==========================================
+     PREVIEW — URL bar
+     ========================================== */
+  .preview-url-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.15);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .preview-url-input {
+    flex: 1;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: var(--text-primary) !important;
+    transition: border-color 0.15s ease;
+  }
+  .preview-url-input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(127, 0, 255, 0.1);
+  }
+  .preview-url-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .preview-url-btn:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
 
 .xterm { padding: 8px; }
 .prose a { color: var(--accent) !important; }

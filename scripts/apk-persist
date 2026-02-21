@@ -1,0 +1,24 @@
+#!/bin/bash
+# Wrapper around "apk add" that persists packages across container restarts.
+# Usage: apk-persist python3 postgresql-client curl
+# Packages are saved to /home/clauder/workspace/.packages and auto-installed on startup.
+
+PACKAGES_FILE="/home/clauder/workspace/.packages"
+
+if [ $# -eq 0 ]; then
+  echo "Usage: apk-persist <package1> [package2] ..."
+  exit 1
+fi
+
+# Install packages
+apk add --no-cache "$@"
+
+# Persist to file (deduplicated)
+touch "$PACKAGES_FILE"
+for pkg in "$@"; do
+  if ! grep -qx "$pkg" "$PACKAGES_FILE" 2>/dev/null; then
+    echo "$pkg" >> "$PACKAGES_FILE"
+  fi
+done
+
+echo "Packages installed and persisted: $*"

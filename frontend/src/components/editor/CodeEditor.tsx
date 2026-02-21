@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react';
-import Editor from '@monaco-editor/react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import Editor, { type OnMount } from '@monaco-editor/react';
 import { readFile, writeFile } from '../../api/files';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import toast from 'react-hot-toast';
 
 interface CodeEditorProps {
   filePath: string | null;
+  tabId: string | null;
+}
+
+interface TabState {
+  content: string;
+  originalContent: string;
+  viewState: unknown;
 }
 
 function getLanguage(path: string): string {
@@ -39,37 +47,104 @@ function getLanguage(path: string): string {
   return map[ext || ''] || 'plaintext';
 }
 
-export default function CodeEditor({ filePath }: CodeEditorProps) {
+export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
   const [content, setContent] = useState('');
   const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [modified, setModified] = useState(false);
 
-  useEffect(() => {
-    if (!filePath) return;
-    setLoading(true);
-    readFile(filePath)
-      .then(({ data }) => {
-        setContent(data.content);
-        setOriginalContent(data.content);
-        setModified(false);
-      })
-      .catch(() => toast.error('Failed to read file'))
-      .finally(() => setLoading(false));
-  }, [filePath]);
+  const { setTabModified } = useWorkspaceStore();
 
-  const handleSave = async () => {
-    if (!filePath || !modified) return;
+  // Cache tab states to preserve content/viewState between tab switches
+  const tabStatesRef = useRef<Map<string, TabState>>(new Map());
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const previousTabIdRef = useRef<string | null>(null);
+
+  const handleEditorMount: OnMount = (editor) => {
+    editorRef.current = editor;
+    // Restore viewState if switching to a cached tab
+    if (tabId) {
+      const cached = tabStatesRef.current.get(tabId);
+      if (cached?.viewState) {
+        editor.restoreViewState(cached.viewState as Parameters<typeof editor.restoreViewState>[0]);
+      }
+    }
+  };
+
+  // Save current tab state before switching
+  const saveCurrentTabState = useCallback(() => {
+    const prevId = previousTabIdRef.current;
+    if (prevId && editorRef.current) {
+      tabStatesRef.current.set(prevId, {
+        content,
+        originalContent,
+        viewState: editorRef.current.saveViewState(),
+      });
+    }
+  }, [content, originalContent]);
+
+  // Load file when filePath/tabId changes
+  useEffect(() => {
+    if (!filePath || !tabId) {
+      previousTabIdRef.current = tabId;
+      return;
+    }
+
+    // Save previous tab state
+    saveCurrentTabState();
+
+    // Check cache for this tab
+    const cached = tabStatesRef.current.get(tabId);
+    if (cached) {
+      setContent(cached.content);
+      setOriginalContent(cached.originalContent);
+      const isModified = cached.content !== cached.originalContent;
+      setModified(isModified);
+
+      // Restore viewState after a tick
+      if (editorRef.current && cached.viewState) {
+        setTimeout(() => {
+          editorRef.current?.restoreViewState(
+            cached.viewState as Parameters<NonNullable<typeof editorRef.current>['restoreViewState']>[0],
+          );
+        }, 0);
+      }
+    } else {
+      // Fetch from server
+      setLoading(true);
+      readFile(filePath)
+        .then(({ data }) => {
+          setContent(data.content);
+          setOriginalContent(data.content);
+          setModified(false);
+        })
+        .catch(() => toast.error('Failed to read file'))
+        .finally(() => setLoading(false));
+    }
+
+    previousTabIdRef.current = tabId;
+  }, [filePath, tabId]);
+
+  const handleSave = useCallback(async () => {
+    if (!filePath || !modified || !tabId) return;
     try {
       await writeFile(filePath, content);
       setOriginalContent(content);
       setModified(false);
+      setTabModified(tabId, false);
+      // Update cache
+      tabStatesRef.current.set(tabId, {
+        content,
+        originalContent: content,
+        viewState: editorRef.current?.saveViewState() ?? null,
+      });
       toast.success('File saved');
     } catch {
       toast.error('Failed to save file');
     }
-  };
+  }, [filePath, content, modified, tabId, setTabModified]);
 
+  // Ctrl+S / Cmd+S keyboard shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -79,7 +154,7 @@ export default function CodeEditor({ filePath }: CodeEditorProps) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [filePath, content, modified]);
+  }, [handleSave]);
 
   if (!filePath) {
     return (
@@ -97,66 +172,40 @@ export default function CodeEditor({ filePath }: CodeEditorProps) {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* File header */}
-      <div
-        className="flex items-center gap-2 px-3 py-1.5 text-xs"
-        style={{
-          borderBottom: '1px solid var(--glass-border)',
-          background: 'rgba(255, 255, 255, 0.02)',
-        }}
-      >
-        <span className="truncate font-mono" style={{ color: 'var(--text-primary)' }}>
-          {filePath}
-        </span>
-        {modified && (
-          <span
-            className="shrink-0 w-2 h-2 rounded-full"
-            style={{ background: 'var(--warning)', boxShadow: '0 0 8px rgba(251, 191, 36, 0.5)' }}
-          />
-        )}
-        <div className="flex-1" />
-        <button
-          onClick={handleSave}
-          disabled={!modified}
-          className="btn-accent px-3 py-0.5 rounded-lg text-xs"
-        >
-          Save
-        </button>
-      </div>
-
-      {/* Editor */}
-      <div className="flex-1">
-        {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <span className="text-sm glow-pulse" style={{ color: 'var(--text-secondary)' }}>
-              Loading...
-            </span>
-          </div>
-        ) : (
-          <Editor
-            height="100%"
-            language={getLanguage(filePath)}
-            value={content}
-            theme="vs-dark"
-            onChange={(value) => {
-              setContent(value || '');
-              setModified(value !== originalContent);
-            }}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              lineNumbers: 'on',
-              wordWrap: 'on',
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              padding: { top: 8 },
-              renderWhitespace: 'selection',
-              bracketPairColorization: { enabled: true },
-            }}
-          />
-        )}
-      </div>
+    <div className="h-full">
+      {loading ? (
+        <div className="flex items-center justify-center h-full">
+          <span className="text-sm glow-pulse" style={{ color: 'var(--text-secondary)' }}>
+            Loading...
+          </span>
+        </div>
+      ) : (
+        <Editor
+          height="100%"
+          language={getLanguage(filePath)}
+          value={content}
+          theme="vs-dark"
+          onMount={handleEditorMount}
+          onChange={(value) => {
+            const newContent = value || '';
+            setContent(newContent);
+            const isModified = newContent !== originalContent;
+            setModified(isModified);
+            if (tabId) setTabModified(tabId, isModified);
+          }}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 13,
+            lineNumbers: 'on',
+            wordWrap: 'on',
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            padding: { top: 8 },
+            renderWhitespace: 'selection',
+            bracketPairColorization: { enabled: true },
+          }}
+        />
+      )}
     </div>
   );
 }
