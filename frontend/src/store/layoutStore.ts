@@ -16,6 +16,7 @@ export type { PanelId };
 export type { LayoutNode, PanelNode, GroupNode } from './layoutUtils';
 
 interface PanelVisibility {
+  [key: string]: boolean;
   chat: boolean;
   files: boolean;
   editor: boolean;

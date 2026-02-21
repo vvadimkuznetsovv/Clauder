@@ -112,7 +112,7 @@ function PanelWithResize({
 // Check if a group has any visible descendant panel
 function hasVisiblePanel(
   node: LayoutNode,
-  visibility: Partial<Record<string, boolean>>,
+  visibility: Record<string, boolean>,
 ): boolean {
   if (node.type === 'panel') return node.panelIds.some((id) => visibility[id] ?? true);
   return node.children.some((child) => hasVisiblePanel(child, visibility));
