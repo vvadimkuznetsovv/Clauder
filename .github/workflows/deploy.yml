@@ -18,21 +18,11 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script_stop: true
           script: |
-            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S bash -c '
-              set -e
-              cd /opt/clauder
-              git pull origin main
-
-              cd /opt/clauder/frontend
-              npm ci
-              npm run build
-
-              cd /opt/clauder/backend
-              /usr/local/go/bin/go build -o clauder .
-
-              cd /opt/clauder
-              docker compose build
-              docker compose down
-              docker compose up -d
-              echo "Deployed successfully"
-            '
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S git -C /opt/clauder pull origin main
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S npm ci --prefix /opt/clauder/frontend
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S npm run build --prefix /opt/clauder/frontend
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S sh -c 'cd /opt/clauder/backend && /usr/local/go/bin/go build -o clauder .'
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml build
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml down
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml up -d
+            echo "Deployed successfully"
