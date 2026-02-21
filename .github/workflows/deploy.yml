@@ -16,9 +16,22 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          script_stop: true
           script: |
             cd /opt/clauder
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S git pull origin main
+
+            # Build frontend
+            cd /opt/clauder/frontend
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S npm ci
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S npm run build
+
+            # Build backend
+            cd /opt/clauder/backend
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S go build -o clauder .
+
+            # Rebuild and restart containers
+            cd /opt/clauder
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose build
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose down
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose up -d
