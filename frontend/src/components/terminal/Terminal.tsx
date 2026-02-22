@@ -5,7 +5,6 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import ContextMenu, { type ContextMenuItem } from '../files/ContextMenu';
-import { useLongPress } from '../../hooks/useLongPress';
 import toast from 'react-hot-toast';
 
 // ── Font size persistence ──
@@ -137,7 +136,7 @@ function connectWs(): WebSocket {
     } else {
       session.xterm.write('\r\n\x1b[38;2;248;113;113m[Disconnected]\x1b[0m\r\n');
       session.xterm.write('\x1b[38;2;110;180;255m[Right-click \u2192 Reconnect]\x1b[0m\r\n');
-      reconnectAttempts = 0;
+      // Do NOT reset reconnectAttempts — only forceReconnect() resets
     }
     notifyRerender?.();
   };
@@ -163,7 +162,8 @@ function getOrCreateSession(): TermSession {
   if (!session) {
     session = createXterm();
   }
-  if (!currentWs || currentWs.readyState > WebSocket.OPEN) {
+  // Only auto-connect if we haven't exhausted reconnect attempts
+  if (reconnectAttempts < MAX_RECONNECT && (!currentWs || currentWs.readyState > WebSocket.OPEN)) {
     connectWs();
   }
   return session;
@@ -237,10 +237,99 @@ export default function TerminalComponent({ active }: TerminalProps) {
     return () => { notifyRerender = null; };
   }, []);
 
-  // Long-press for mobile context menu
-  const { handlers: longPressHandlers } = useLongPress({
-    onLongPress: (x, y) => setCtxMenu({ x, y }),
-  });
+  // Touch handling: scroll by swiping + long-press context menu
+  // xterm.js canvas doesn't support native touch scroll, so we translate
+  // touch moves into xterm.scrollLines() calls manually.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const longPressTimer = useRef<number>(0);
+  const touchStartPos = useRef({ x: 0, y: 0 });
+  const touchLastY = useRef(0);
+  const scrolling = useRef(false);
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const LONG_PRESS_MS = 500;
+    const MOVE_THRESHOLD = 10; // px before we consider it a scroll
+    const LINE_HEIGHT = session?.xterm.options.fontSize
+      ? Math.ceil(session.xterm.options.fontSize * 1.2)
+      : 16;
+
+    let accumulatedDelta = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      touchStartPos.current = { x: t.clientX, y: t.clientY };
+      touchLastY.current = t.clientY;
+      scrolling.current = false;
+      accumulatedDelta = 0;
+
+      // Start long-press timer
+      longPressTimer.current = window.setTimeout(() => {
+        if (!scrolling.current) {
+          setCtxMenu({ x: touchStartPos.current.x, y: touchStartPos.current.y });
+        }
+        longPressTimer.current = 0;
+      }, LONG_PRESS_MS);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+
+      // Check if we've moved enough to count as scroll
+      if (!scrolling.current) {
+        const dx = t.clientX - touchStartPos.current.x;
+        const dy = t.clientY - touchStartPos.current.y;
+        if (Math.abs(dy) > MOVE_THRESHOLD || Math.abs(dx) > MOVE_THRESHOLD) {
+          scrolling.current = true;
+          // Cancel long-press — user is scrolling
+          if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = 0;
+          }
+        }
+      }
+
+      if (scrolling.current && session) {
+        const deltaY = touchLastY.current - t.clientY; // positive = scroll down
+        touchLastY.current = t.clientY;
+        accumulatedDelta += deltaY;
+
+        // Convert pixel delta to lines
+        const lines = Math.trunc(accumulatedDelta / LINE_HEIGHT);
+        if (lines !== 0) {
+          session.xterm.scrollLines(lines);
+          accumulatedDelta -= lines * LINE_HEIGHT;
+        }
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = 0;
+      }
+      scrolling.current = false;
+      accumulatedDelta = 0;
+    };
+
+    // passive: true — we never call preventDefault, browser can handle its own stuff
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+      clearTimeout(longPressTimer.current);
+    };
+  }, []);
 
   const fit = useCallback(() => {
     if (!session) return;
@@ -404,6 +493,7 @@ export default function TerminalComponent({ active }: TerminalProps) {
 
   return (
     <div
+      ref={wrapperRef}
       className="h-full relative"
       style={{ background: '#0a0a1a' }}
       onContextMenu={handleContextMenu}
@@ -411,7 +501,6 @@ export default function TerminalComponent({ active }: TerminalProps) {
       <div
         ref={termRef}
         className="h-full"
-        {...longPressHandlers}
       />
 
       {/* Search bar */}

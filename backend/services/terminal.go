@@ -1,9 +1,11 @@
 package services
 
 import (
+	"log"
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 
 	gopty "github.com/aymanbagabas/go-pty"
@@ -27,11 +29,10 @@ func NewTerminalService() *TerminalService {
 }
 
 func defaultShell() string {
-	if shell := os.Getenv("SHELL"); shell != "" {
-		return shell
-	}
 	if runtime.GOOS == "windows" {
-		// Must resolve absolute path — go-pty resolves relative to cmd.Dir on Windows
+		// On Windows, ignore $SHELL — it's set by Git Bash/MINGW to a Unix-style
+		// path (e.g. /usr/bin/bash) that ConPTY cannot execute.
+		// Must resolve absolute path — go-pty resolves relative to cmd.Dir on Windows.
 		if ps, err := exec.LookPath("pwsh.exe"); err == nil {
 			return ps
 		}
@@ -40,10 +41,16 @@ func defaultShell() string {
 		}
 		return "powershell.exe"
 	}
-	if bash, err := exec.LookPath("bash"); err == nil {
-		return bash
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return shell
 	}
-	return "/bin/bash"
+	// Try bash first, then ash (Alpine default), then sh
+	for _, sh := range []string{"bash", "ash", "sh"} {
+		if p, err := exec.LookPath(sh); err == nil {
+			return p
+		}
+	}
+	return "/bin/sh"
 }
 
 func (s *TerminalService) Create(sessionKey string, workingDir string) (*TerminalSession, error) {
@@ -56,6 +63,13 @@ func (s *TerminalService) Create(sessionKey string, workingDir string) (*Termina
 	}
 
 	shell := defaultShell()
+	log.Printf("Terminal: shell=%s dir=%s key=%s", shell, workingDir, sessionKey)
+
+	// Verify working directory exists, fall back to /tmp
+	if _, err := os.Stat(workingDir); err != nil {
+		log.Printf("Terminal: dir %s not found, fallback /tmp", workingDir)
+		workingDir = os.TempDir()
+	}
 
 	p, err := gopty.New()
 	if err != nil {
@@ -64,10 +78,29 @@ func (s *TerminalService) Create(sessionKey string, workingDir string) (*Termina
 
 	cmd := p.Command(shell)
 	cmd.Dir = workingDir
-	cmd.Env = append(os.Environ(),
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-	)
+
+	// Build environment: ensure critical vars exist for shell init
+	env := os.Environ()
+	has := make(map[string]bool)
+	for _, e := range env {
+		if i := strings.IndexByte(e, '='); i > 0 {
+			has[e[:i]] = true
+		}
+	}
+	if !has["HOME"] {
+		env = append(env, "HOME="+workingDir)
+	}
+	if !has["USER"] {
+		env = append(env, "USER=root")
+	}
+	if !has["SHELL"] {
+		env = append(env, "SHELL="+shell)
+	}
+	if !has["PATH"] {
+		env = append(env, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	}
+	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
+	cmd.Env = env
 
 	if err := cmd.Start(); err != nil {
 		p.Close()
@@ -82,7 +115,11 @@ func (s *TerminalService) Create(sessionKey string, workingDir string) (*Termina
 
 	// Monitor process exit
 	go func() {
-		cmd.Wait()
+		if err := cmd.Wait(); err != nil {
+			log.Printf("Terminal: shell exited: %v (key=%s)", err, sessionKey)
+		} else {
+			log.Printf("Terminal: shell exited normally (key=%s)", sessionKey)
+		}
 		close(session.Done)
 	}()
 
