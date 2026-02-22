@@ -34,10 +34,10 @@ export default function LayoutRenderer({ node, isFirst = false }: LayoutRenderer
 
   if (visibleChildren.length === 0) return null;
 
-  // NOTE: do NOT short-circuit for visibleChildren.length === 1.
-  // Rendering directly (without a Group wrapper) changes the component tree
-  // structure when visibility toggles between 1 and 2+ children, which
-  // unmounts DroppablePanel — causing iframes (chat, preview) to reload.
+  // If only one visible child, render it directly without Group wrapper
+  if (visibleChildren.length === 1) {
+    return <LayoutRenderer node={visibleChildren[0].child} isFirst={isFirst} />;
+  }
 
   // Calculate default sizes for visible children (redistribute proportionally)
   const visibleSizes = visibleChildren.map((vc) => node.sizes[vc.index]);
@@ -64,7 +64,7 @@ export default function LayoutRenderer({ node, isFirst = false }: LayoutRenderer
 
   return (
     <Group
-      key={node.id}
+      key={visibleChildren.map((vc) => vc.child.id).join(',')}
       orientation={orientation}
       id={node.id}
       defaultLayout={defaultLayout}

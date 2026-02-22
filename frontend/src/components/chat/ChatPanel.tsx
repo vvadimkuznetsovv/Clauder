@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '../../store/authStore';
 
 interface ChatPanelProps {
@@ -7,12 +7,61 @@ interface ChatPanelProps {
 
 type Status = 'checking' | 'ok' | 'unavailable';
 
-export default function ChatPanel(_props: ChatPanelProps) {
-  // Reactive token — automatically re-probes after token refresh or logout
-  const token = useAuthStore((s) => s.accessToken);
-  const [status, setStatus] = useState<Status>('checking');
+// ── Singleton iframe: created once, NEVER removed from DOM ──
+// Survives any React remount (layout changes, tab switches, panel toggles).
+// Uses position:fixed and syncs position to the ChatPanel container via ResizeObserver.
 
+let iframeWrapper: HTMLDivElement | null = null;
+let iframeEl: HTMLIFrameElement | null = null;
+let iframeToken: string | null = null; // token used when iframe was created
+
+function ensureIframe(token: string): void {
+  if (iframeWrapper) return; // already created
+
+  iframeWrapper = document.createElement('div');
+  iframeWrapper.style.cssText =
+    'position:fixed;z-index:15;display:none;overflow:hidden;pointer-events:none;';
+  document.body.appendChild(iframeWrapper);
+
+  iframeEl = document.createElement('iframe');
+  iframeEl.src = `/code/?token=${token}`;
+  iframeEl.title = 'VS Code';
+  iframeEl.allow = 'clipboard-read; clipboard-write';
+  iframeEl.style.cssText =
+    'width:100%;height:100%;border:0;background:#1e1e1e;pointer-events:auto;';
+  iframeWrapper.appendChild(iframeEl);
+  iframeToken = token;
+}
+
+function showIframe(rect: DOMRect): void {
+  if (!iframeWrapper) return;
+  if (rect.width <= 0 || rect.height <= 0) {
+    iframeWrapper.style.display = 'none';
+    return;
+  }
+  iframeWrapper.style.display = 'block';
+  iframeWrapper.style.top = `${rect.top}px`;
+  iframeWrapper.style.left = `${rect.left}px`;
+  iframeWrapper.style.width = `${rect.width}px`;
+  iframeWrapper.style.height = `${rect.height}px`;
+}
+
+function hideIframe(): void {
+  if (iframeWrapper) iframeWrapper.style.display = 'none';
+}
+
+function isIframeCreated(): boolean {
+  return !!iframeWrapper;
+}
+
+export default function ChatPanel(_props: ChatPanelProps) {
+  const token = useAuthStore((s) => s.accessToken);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<Status>(() => isIframeCreated() ? 'ok' : 'checking');
+
+  // Probe code-server (only if iframe not yet created)
   useEffect(() => {
+    if (isIframeCreated()) { setStatus('ok'); return; }
     if (!token) { setStatus('unavailable'); return; }
 
     setStatus('checking');
@@ -20,12 +69,48 @@ export default function ChatPanel(_props: ChatPanelProps) {
     const timer = setTimeout(() => controller.abort(), 5000);
 
     fetch(`/code/?token=${token}`, { method: 'HEAD', signal: controller.signal })
-      .then(res => { setStatus(res.ok ? 'ok' : 'unavailable'); })
+      .then(res => {
+        if (res.ok) {
+          ensureIframe(token);
+          setStatus('ok');
+        } else {
+          setStatus('unavailable');
+        }
+      })
       .catch(() => { setStatus('unavailable'); })
       .finally(() => clearTimeout(timer));
 
     return () => { controller.abort(); clearTimeout(timer); };
   }, [token]);
+
+  // Sync iframe position to our container
+  const syncPosition = useCallback(() => {
+    if (containerRef.current) {
+      showIframe(containerRef.current.getBoundingClientRect());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (status !== 'ok' || !containerRef.current) return;
+
+    // Initial sync
+    syncPosition();
+
+    // ResizeObserver: fires when container size changes (tab switch, panel resize, etc.)
+    const ro = new ResizeObserver(syncPosition);
+    ro.observe(containerRef.current);
+
+    // Also sync on scroll/resize (catches position changes without size change)
+    window.addEventListener('resize', syncPosition);
+    window.addEventListener('scroll', syncPosition, true);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', syncPosition);
+      window.removeEventListener('scroll', syncPosition, true);
+      hideIframe();
+    };
+  }, [status, syncPosition]);
 
   if (status === 'checking') {
     return (
@@ -83,15 +168,6 @@ export default function ChatPanel(_props: ChatPanelProps) {
     );
   }
 
-  return (
-    <div className="h-full">
-      <iframe
-        src={`/code/?token=${token}`}
-        title="VS Code"
-        className="w-full h-full border-0"
-        style={{ background: '#1e1e1e' }}
-        allow="clipboard-read; clipboard-write"
-      />
-    </div>
-  );
+  // Placeholder div — iframe is positioned over it via position:fixed
+  return <div ref={containerRef} className="h-full" style={{ touchAction: 'manipulation' }} />;
 }
