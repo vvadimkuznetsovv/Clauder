@@ -146,6 +146,7 @@ export default function ContextMenu({ x, y, items, onAction, onClose }: ContextM
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
     >
       <div className="context-menu-scroll" style={{ maxHeight: maxH ? maxH - (isOverflowing ? 44 : 0) : undefined }}>
         {items.map((item, i) =>
