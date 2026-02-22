@@ -22,11 +22,13 @@ RUN mkdir -p /custom-cont-init.d && \
         'cat > /config/data/User/settings.json << '\''SETTINGS'\''' \
         '{' \
         '  "workbench.activityBar.location": "top",' \
-        '  "window.menuBarVisibility": "compact"' \
+        '  "window.menuBarVisibility": "compact",' \
+        '  "workbench.colorTheme": "Visual Studio 2019 Dark"' \
         '}' \
         'SETTINGS' \
         '' \
-        '# Update Claude Code extension to latest (fixes navigator compat errors)' \
+        '# Install extensions: C++ themes (Visual Studio 2019 Dark) + Claude Code' \
+        '/app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension ms-vscode.cpptools-themes --force 2>/dev/null' \
         '/app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension anthropic.claude-code --force 2>/dev/null &' \
         > /custom-cont-init.d/50-disable-auth && \
     chmod +x /custom-cont-init.d/50-disable-auth
