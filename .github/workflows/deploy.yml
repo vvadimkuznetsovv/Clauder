@@ -25,4 +25,17 @@ jobs:
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml build
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml down
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml up -d
+
+            # Stop host nginx (Docker nginx takes over ports 80/443)
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S systemctl stop nginx 2>/dev/null || true
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S systemctl disable nginx 2>/dev/null || true
+
+            # Certbot renewal hook: reload Docker nginx on certificate renewal
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S bash -c 'cat > /etc/letsencrypt/renewal-hooks/deploy/reload-docker-nginx.sh << "HOOK"
+            #!/bin/bash
+            docker compose -f /opt/clauder/docker-compose.yml exec -T nginx nginx -s reload
+            HOOK'
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-docker-nginx.sh
+
             echo "Deployed successfully"

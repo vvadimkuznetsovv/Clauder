@@ -23,11 +23,12 @@ RUN mkdir -p /custom-cont-init.d && \
         '{' \
         '  "workbench.activityBar.location": "top",' \
         '  "window.menuBarVisibility": "compact",' \
-        '  "workbench.colorTheme": "Visual Studio 2019 Dark"' \
+        '  "workbench.colorTheme": "Visual Studio Dark - C++",' \
+        '  "claudeCode.selectedModel": "opus"' \
         '}' \
         'SETTINGS' \
         '' \
-        '# Install extensions: C++ themes (Visual Studio 2019 Dark) + Claude Code' \
+        '# Install extensions: C++ themes (Visual Studio Dark - C++) + Claude Code' \
         '/app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension ms-vscode.cpptools-themes --force 2>/dev/null' \
         '/app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension anthropic.claude-code --force 2>/dev/null &' \
         > /custom-cont-init.d/50-disable-auth && \
