@@ -71,8 +71,23 @@ func CodeServerAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+// headRecorder captures status + headers for HEAD→GET conversion, discarding the body.
+type headRecorder struct {
+	header http.Header
+	status int
+}
+
+func (r *headRecorder) Header() http.Header         { return r.header }
+func (r *headRecorder) Write(b []byte) (int, error) { return len(b), nil } // discard body
+func (r *headRecorder) WriteHeader(status int)      { r.status = status }
+
 // CodeServerProxy returns a Gin handler that reverse-proxies to code-server.
 // Auth is handled by CodeServerAuthMiddleware on the route group.
+//
+// code-server doesn't support HEAD on all paths (returns 405). The handler
+// converts HEAD requests to GET internally and strips the response body so
+// that code-server's own web client (running inside the iframe) doesn't
+// break when it checks workspace/folder existence via HEAD.
 func CodeServerProxy() gin.HandlerFunc {
 	target, _ := url.Parse("http://code-server:8443")
 
@@ -96,6 +111,20 @@ func CodeServerProxy() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		if c.Request.Method == http.MethodHead {
+			// Convert HEAD → GET for the upstream request so code-server handles it,
+			// then return only the response headers (no body) to the original caller.
+			c.Request.Method = http.MethodGet
+			rec := &headRecorder{header: make(http.Header), status: http.StatusOK}
+			proxy.ServeHTTP(rec, c.Request)
+			for k, v := range rec.header {
+				for _, vv := range v {
+					c.Writer.Header().Add(k, vv)
+				}
+			}
+			c.Writer.WriteHeader(rec.status)
+			return
+		}
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 }
