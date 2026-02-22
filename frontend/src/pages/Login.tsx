@@ -158,21 +158,7 @@ export default function Login() {
         <div style={{ position: 'relative', zIndex: 3 }}>
           {/* Logo */}
           <div className="login-logo" style={{ textAlign: 'center', marginBottom: '48px' }}>
-            <div className="glow-pulse login-logo-icon" style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: '84px', height: '84px', borderRadius: '26px',
-              background: 'rgba(255,255,255,0.06)',
-              backdropFilter: 'blur(20px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              marginBottom: '28px', position: 'relative', overflow: 'hidden',
-              boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.2), inset 0 -1px 1px rgba(0,0,0,0.1), 0 0 50px rgba(127,0,255,0.2)',
-            }}>
-              {/* Glass specular highlight */}
-              <div style={{ position: 'absolute', inset: 0, borderRadius: '26px', background: 'linear-gradient(145deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.05) 30%, transparent 55%)', pointerEvents: 'none' }} />
-              {/* Favicon logo */}
-              <img src="/favicon.svg" alt="Clauder" width="52" height="52" style={{ position: 'relative', zIndex: 1, borderRadius: '12px', filter: 'drop-shadow(0 0 12px rgba(127,0,255,0.6))' }} />
-            </div>
+            <img src="/favicon.svg" alt="Clauder" className="login-logo-icon" width="84" height="84" style={{ borderRadius: '22px', marginBottom: '28px' }} />
             <h1 className="login-title" style={{ fontSize: '38px', fontWeight: 800, letterSpacing: '-0.03em', color: 'rgba(255,255,255,0.95)', marginBottom: '10px' }}>Clauder</h1>
             <p className="login-subtitle" style={{ fontSize: '15px', color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>Claude Code Web Interface</p>
           </div>
