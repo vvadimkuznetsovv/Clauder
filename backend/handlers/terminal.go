@@ -64,7 +64,7 @@ func (h *TerminalHandler) HandleWebSocket(c *gin.Context) {
 		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Failed to create terminal"}`))
 		return
 	}
-	defer h.terminal.Remove(sessionKey)
+	defer h.terminal.RemoveIfMatch(sessionKey, termSession)
 
 	// PTY → WebSocket (stdout)
 	go func() {

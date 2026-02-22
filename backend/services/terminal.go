@@ -143,6 +143,17 @@ func (s *TerminalService) Remove(sessionKey string) {
 	}
 }
 
+// RemoveIfMatch removes the session only if it's the exact same instance.
+// Prevents a race where an old handler's defer kills a newer session.
+func (s *TerminalService) RemoveIfMatch(sessionKey string, expected *TerminalSession) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if session, ok := s.sessions[sessionKey]; ok && session == expected {
+		session.Close()
+		delete(s.sessions, sessionKey)
+	}
+}
+
 func (s *TerminalService) Resize(sessionKey string, rows, cols uint16) error {
 	s.mu.RLock()
 	session, ok := s.sessions[sessionKey]
