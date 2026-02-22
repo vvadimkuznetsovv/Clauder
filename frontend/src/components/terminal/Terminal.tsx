@@ -40,6 +40,16 @@ const sessions = new Map<string, TermSession>();
 const MAX_RECONNECT = 5;
 const RECONNECT_DELAY = 800;
 
+/** Unique ID per browser tab — so two tabs/devices get separate PTY sessions */
+function getTabSessionId(): string {
+  let id = sessionStorage.getItem('clauder-tab-id');
+  if (!id) {
+    id = Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem('clauder-tab-id', id);
+  }
+  return id;
+}
+
 function createXterm(instanceId: string): TermSession {
   console.log(`[Terminal] createXterm id=${instanceId}`);
   const fontSize = getSavedFontSize();
@@ -121,7 +131,9 @@ function connectWs(instanceId: string): void {
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${protocol}//${window.location.host}/ws/terminal?token=${token}&instanceId=${encodeURIComponent(instanceId)}`;
+  const tabId = getTabSessionId();
+  const wsInstanceId = `${instanceId}@${tabId}`;
+  const url = `${protocol}//${window.location.host}/ws/terminal?token=${token}&instanceId=${encodeURIComponent(wsInstanceId)}`;
   console.log(`[Terminal] connectWs id=${instanceId} attempt=${session.reconnectAttempts}`);
   const ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
