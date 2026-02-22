@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { PanelId, PanelNode } from '../../store/layoutStore';
 import { useLayoutStore } from '../../store/layoutStore';
-import { isDetachedEditor, getDetachedTabId } from '../../store/layoutUtils';
+import { isDetachedEditor, getDetachedTabId, isDetachedTerminal } from '../../store/layoutUtils';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import PanelContent, { getPanelIcon, getPanelTitle } from './PanelContent';
 import ContextMenu from '../files/ContextMenu';
@@ -154,14 +154,23 @@ export default function DroppablePanel({ node, isFirst = false }: DroppablePanel
 
 // --- Context menu items builder ---
 function getPanelMenuItems(panelId: PanelId, isMultiTab: boolean) {
-  const isDetached = isDetachedEditor(panelId);
+  const isDetachedEd = isDetachedEditor(panelId);
+  const isDetachedTerm = isDetachedTerminal(panelId);
   const title = getPanelTitle(panelId);
 
-  if (isDetached) {
+  if (isDetachedEd) {
     return [
       { label: 'Return to File Manager', action: 'reattach', icon: ICONS.cornerDownLeft },
       { type: 'separator' as const },
       { label: 'Close Tab', action: 'close-detached', icon: ICONS.x },
+      { type: 'separator' as const },
+      { label: 'Reset Layout', action: 'reset-layout', icon: ICONS.rotateCcw },
+    ];
+  }
+
+  if (isDetachedTerm) {
+    return [
+      { label: 'Close Terminal', action: 'close-detached', icon: ICONS.x },
       { type: 'separator' as const },
       { label: 'Reset Layout', action: 'reset-layout', icon: ICONS.rotateCcw },
     ];
@@ -313,7 +322,7 @@ function DragHeader({ panelId, nodeId, showSidebarBtn }: { panelId: PanelId; nod
           type="button"
           className="panel-close-btn"
           onClick={(e) => { e.stopPropagation(); handleClose(); }}
-          title={isDetachedEditor(panelId) ? `Close ${title}` : `Hide ${title}`}
+          title={(isDetachedEditor(panelId) || isDetachedTerminal(panelId)) ? `Close ${title}` : `Hide ${title}`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -424,7 +433,7 @@ function DraggableTab({
           type="button"
           className={`panel-tab-close${isActive ? '' : ' panel-tab-close-compact'}`}
           onClick={(e) => { e.stopPropagation(); handleClose(); }}
-          title={isDetachedEditor(panelId) ? `Close ${title}` : `Hide ${title}`}
+          title={(isDetachedEditor(panelId) || isDetachedTerminal(panelId)) ? `Close ${title}` : `Hide ${title}`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18" />

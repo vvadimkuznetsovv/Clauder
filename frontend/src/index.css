@@ -19,15 +19,26 @@
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body, #root { height: 100%; }
 
+  /* iOS keyboard fix: position:fixed prevents Safari from scrolling
+     the html element when an input is focused (virtual keyboard open).
+     --app-height is set by visualViewport resize listener in main.tsx. */
+  html {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body {
+    height: 100%;
     background: var(--bg-primary);
     color: var(--text-primary);
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
+    overscroll-behavior: none;
   }
+  #root { height: var(--app-height, 100%); }
 
   input, textarea, select, button {
     font-family: inherit; color: inherit; background: none;

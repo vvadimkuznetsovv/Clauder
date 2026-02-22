@@ -3,7 +3,8 @@
 // Base panel types (one instance each)
 export type BasePanelId = 'chat' | 'files' | 'editor' | 'preview' | 'terminal';
 // Dynamic detached editors: 'editor:tab-123'
-export type PanelId = BasePanelId | `editor:${string}`;
+// Dynamic detached terminals: 'terminal:term-123'
+export type PanelId = BasePanelId | `editor:${string}` | `terminal:${string}`;
 
 // --- Detached editor helpers ---
 export function isDetachedEditor(panelId: string): panelId is `editor:${string}` {
@@ -15,6 +16,19 @@ export function getDetachedTabId(panelId: string): string | null {
 }
 export function makeDetachedPanelId(tabId: string): PanelId {
   return `editor:${tabId}`;
+}
+
+// --- Detached terminal helpers ---
+export function isDetachedTerminal(panelId: string): panelId is `terminal:${string}` {
+  // 'terminal' (base panel) does NOT have a colon — 'terminal:xxx' does
+  return panelId.startsWith('terminal:');
+}
+export function getDetachedTerminalId(panelId: string): string | null {
+  if (!isDetachedTerminal(panelId)) return null;
+  return panelId.slice('terminal:'.length);
+}
+export function makeDetachedTerminalPanelId(instanceId: string): PanelId {
+  return `terminal:${instanceId}`;
 }
 
 // Insert a NEW panelId into the tree next to targetNodeId (without removing it from anywhere first).

@@ -1,5 +1,5 @@
 import type { PanelId, BasePanelId } from '../../store/layoutUtils';
-import { isDetachedEditor, getDetachedTabId } from '../../store/layoutUtils';
+import { isDetachedEditor, getDetachedTabId, isDetachedTerminal, getDetachedTerminalId } from '../../store/layoutUtils';
 import { useLayoutStore } from '../../store/layoutStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 import ChatPanel from '../chat/ChatPanel';
@@ -47,9 +47,10 @@ const basePanelTitles: Record<BasePanelId, string> = {
   terminal: 'Terminal',
 };
 
-// Dynamic icon lookup — detached editors use the code icon
+// Dynamic icon lookup — detached editors use the code icon, detached terminals use the terminal icon
 export function getPanelIcon(panelId: PanelId): React.ReactNode {
   if (isDetachedEditor(panelId)) return basePanelIcons.editor;
+  if (isDetachedTerminal(panelId)) return basePanelIcons.terminal;
   return basePanelIcons[panelId as BasePanelId] ?? basePanelIcons.editor;
 }
 
@@ -63,6 +64,7 @@ export function getPanelTitle(panelId: PanelId): string {
     }
     return 'Editor';
   }
+  if (isDetachedTerminal(panelId)) return 'Terminal';
   return basePanelTitles[panelId as BasePanelId] ?? 'Panel';
 }
 
@@ -86,6 +88,12 @@ export default function PanelContent({ panelId }: { panelId: PanelId }) {
     );
   }
 
+  // Handle detached terminal panels
+  if (isDetachedTerminal(panelId)) {
+    const instanceId = getDetachedTerminalId(panelId)!;
+    return <TerminalComponent instanceId={instanceId} active={visibility[panelId]} />;
+  }
+
   switch (panelId) {
     case 'chat':
       return <ChatPanel sessionId={activeSession?.id || null} />;
@@ -107,7 +115,7 @@ export default function PanelContent({ panelId }: { panelId: PanelId }) {
       return <PreviewPanel />;
 
     case 'terminal':
-      return <TerminalComponent active={visibility.terminal} />;
+      return <TerminalComponent instanceId="default" persistent active={visibility.terminal} />;
 
     default:
       return null;

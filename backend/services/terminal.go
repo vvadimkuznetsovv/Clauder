@@ -65,16 +65,21 @@ func (s *TerminalService) GetOrCreate(sessionKey string, workingDir string) (*Te
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	log.Printf("[TerminalService] GetOrCreate key=%s totalSessions=%d", sessionKey, len(s.sessions))
+
 	// Reuse existing session if shell is still running
 	if existing, ok := s.sessions[sessionKey]; ok {
-		if existing.IsAlive() {
-			log.Printf("Terminal: reusing session key=%s", sessionKey)
+		alive := existing.IsAlive()
+		log.Printf("[TerminalService] found existing session key=%s alive=%v", sessionKey, alive)
+		if alive {
 			return existing, nil
 		}
 		// Shell is dead — clean up
-		log.Printf("Terminal: dead session found, recreating key=%s", sessionKey)
+		log.Printf("[TerminalService] dead session, recreating key=%s", sessionKey)
 		existing.Close()
 		delete(s.sessions, sessionKey)
+	} else {
+		log.Printf("[TerminalService] no existing session, creating new key=%s", sessionKey)
 	}
 
 	return s.createLocked(sessionKey, workingDir)
@@ -95,7 +100,7 @@ func (s *TerminalService) Create(sessionKey string, workingDir string) (*Termina
 
 func (s *TerminalService) createLocked(sessionKey string, workingDir string) (*TerminalSession, error) {
 	shell := defaultShell()
-	log.Printf("Terminal: shell=%s dir=%s key=%s", shell, workingDir, sessionKey)
+	log.Printf("[TerminalService] createLocked shell=%s dir=%s key=%s", shell, workingDir, sessionKey)
 
 	// Verify working directory exists, fall back to /tmp
 	if _, err := os.Stat(workingDir); err != nil {
@@ -136,6 +141,7 @@ func (s *TerminalService) createLocked(sessionKey string, workingDir string) (*T
 
 	if err := cmd.Start(); err != nil {
 		p.Close()
+		log.Printf("[TerminalService] cmd.Start failed: %v key=%s", err, sessionKey)
 		return nil, err
 	}
 
@@ -145,17 +151,20 @@ func (s *TerminalService) createLocked(sessionKey string, workingDir string) (*T
 		Done: make(chan struct{}),
 	}
 
+	log.Printf("[TerminalService] shell started pid=%d key=%s", cmd.Process.Pid, sessionKey)
+
 	// Monitor process exit
 	go func() {
 		if err := cmd.Wait(); err != nil {
-			log.Printf("Terminal: shell exited: %v (key=%s)", err, sessionKey)
+			log.Printf("[TerminalService] shell exited with error: %v (key=%s)", err, sessionKey)
 		} else {
-			log.Printf("Terminal: shell exited normally (key=%s)", sessionKey)
+			log.Printf("[TerminalService] shell exited normally (key=%s)", sessionKey)
 		}
 		close(session.Done)
 	}()
 
 	s.sessions[sessionKey] = session
+	log.Printf("[TerminalService] session stored key=%s totalSessions=%d", sessionKey, len(s.sessions))
 	return session, nil
 }
 
@@ -205,7 +214,10 @@ func (ts *TerminalSession) Attach(c io.Closer) {
 	ts.active = c
 	ts.connMu.Unlock()
 	if old != nil {
+		log.Printf("[TerminalService] Attach: closing OLD conn %p, installing NEW conn %p", old, c)
 		old.Close()
+	} else {
+		log.Printf("[TerminalService] Attach: no old conn, installing NEW conn %p", c)
 	}
 }
 

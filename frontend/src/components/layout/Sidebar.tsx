@@ -16,7 +16,7 @@ interface SidebarProps {
 const allPanels: BasePanelId[] = ['chat', 'files', 'editor', 'preview', 'terminal'];
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
-  const { visibility, toggleVisibility } = useLayoutStore();
+  const { visibility, toggleVisibility, openNewTerminal } = useLayoutStore();
   const [showSettings, setShowSettings] = useState(false);
   const [showTotpSetup, setShowTotpSetup] = useState(false);
   const [totpUrl, setTotpUrl] = useState('');
@@ -175,22 +175,29 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Panel toggles */}
         <div className="px-3 py-2 flex items-center gap-1.5">
-          {allPanels.map((panel) => (
-            <button
-              key={panel}
-              type="button"
-              onClick={() => toggleVisibility(panel)}
-              title={`${visibility[panel] ? 'Hide' : 'Show'} ${panelTitles[panel]}`}
-              className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200"
-              style={{
-                background: visibility[panel] ? 'rgba(127, 0, 255, 0.15)' : 'rgba(255, 255, 255, 0.04)',
-                border: `1px solid ${visibility[panel] ? 'rgba(127, 0, 255, 0.3)' : 'rgba(255, 255, 255, 0.06)'}`,
-                color: visibility[panel] ? 'var(--accent-bright)' : 'rgba(255, 255, 255, 0.35)',
-              }}
-            >
-              {panelIcons[panel]}
-            </button>
-          ))}
+          {allPanels.map((panel) => {
+            // Terminal button: always opens a new terminal instance
+            const isTerminal = panel === 'terminal';
+            const anyTerminalVisible = isTerminal
+              ? Object.keys(visibility).some((k) => (k === 'terminal' || k.startsWith('terminal:')) && visibility[k])
+              : visibility[panel];
+            return (
+              <button
+                key={panel}
+                type="button"
+                onClick={() => isTerminal ? openNewTerminal() : toggleVisibility(panel)}
+                title={isTerminal ? 'Open new terminal' : `${visibility[panel] ? 'Hide' : 'Show'} ${panelTitles[panel]}`}
+                className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200"
+                style={{
+                  background: anyTerminalVisible ? 'rgba(127, 0, 255, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                  border: `1px solid ${anyTerminalVisible ? 'rgba(127, 0, 255, 0.3)' : 'rgba(255, 255, 255, 0.06)'}`,
+                  color: anyTerminalVisible ? 'var(--accent-bright)' : 'rgba(255, 255, 255, 0.35)',
+                }}
+              >
+                {panelIcons[panel]}
+              </button>
+            );
+          })}
         </div>
 
         <div className="glass-divider mx-3" />

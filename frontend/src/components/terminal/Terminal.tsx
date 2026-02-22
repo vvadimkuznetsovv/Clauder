@@ -5,6 +5,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import ContextMenu, { type ContextMenuItem } from '../files/ContextMenu';
+import { useLongPress } from '../../hooks/useLongPress';
 import toast from 'react-hot-toast';
 
 // ── Font size persistence ──
@@ -19,27 +20,41 @@ function getSavedFontSize(): number {
   return saved >= MIN_FONT_SIZE && saved <= MAX_FONT_SIZE ? saved : DEFAULT_FONT_SIZE;
 }
 
-// ── Singleton: xterm lives forever, WebSocket is transient ──
+// ── Per-instance sessions: xterm lives until explicitly destroyed ──
+// Module-level Map — survives any React remount (layout changes, tab switches).
+// Each terminal instance (identified by instanceId) has its own xterm + WebSocket.
 
 interface TermSession {
   xterm: XTerm;
   fitAddon: FitAddon;
   searchAddon: SearchAddon;
   container: HTMLDivElement | null;
+  ws: WebSocket | null;
+  reconnectTimer: number | null;
+  reconnectAttempts: number;
+  notifyRerender: (() => void) | null;
 }
 
-let session: TermSession | null = null;
-let currentWs: WebSocket | null = null;
-let reconnectTimer: number | null = null;
-let reconnectAttempts = 0;
+const sessions = new Map<string, TermSession>();
+
 const MAX_RECONNECT = 5;
 const RECONNECT_DELAY = 800;
 
-/** Notify React component to re-render (e.g. after reconnect status change) */
-let notifyRerender: (() => void) | null = null;
-
-function createXterm(): TermSession {
+function createXterm(instanceId: string): TermSession {
+  console.log(`[Terminal] createXterm id=${instanceId}`);
   const fontSize = getSavedFontSize();
+
+  // Create session object first so onData can close over session.ws
+  const session: TermSession = {
+    xterm: null!,
+    fitAddon: null!,
+    searchAddon: null!,
+    container: null,
+    ws: null,
+    reconnectTimer: null,
+    reconnectAttempts: 0,
+    notifyRerender: null,
+  };
 
   const xterm = new XTerm({
     cursorBlink: true,
@@ -80,26 +95,36 @@ function createXterm(): TermSession {
   const searchAddon = new SearchAddon();
   xterm.loadAddon(searchAddon);
 
-  // Single onData listener — reads currentWs by closure reference
+  // onData closes over session.ws (mutable field on the session object)
   xterm.onData((data) => {
-    if (currentWs?.readyState === WebSocket.OPEN) {
-      currentWs.send(new TextEncoder().encode(data));
+    if (session.ws?.readyState === WebSocket.OPEN) {
+      session.ws.send(new TextEncoder().encode(data));
     }
   });
 
-  return { xterm, fitAddon, searchAddon, container: null };
+  session.xterm = xterm;
+  session.fitAddon = fitAddon;
+  session.searchAddon = searchAddon;
+
+  sessions.set(instanceId, session);
+  return session;
 }
 
-function connectWs(): WebSocket {
+function connectWs(instanceId: string): void {
+  const session = sessions.get(instanceId);
+  if (!session) return;
+
   const token = localStorage.getItem('access_token');
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${protocol}//${window.location.host}/ws/terminal?token=${token}`);
+  const url = `${protocol}//${window.location.host}/ws/terminal?token=${token}&instanceId=${encodeURIComponent(instanceId)}`;
+  console.log(`[Terminal] connectWs id=${instanceId} attempt=${session.reconnectAttempts}`);
+  const ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
-  currentWs = ws;
+  session.ws = ws;
 
   ws.onopen = () => {
-    reconnectAttempts = 0;
-    if (!session) return;
+    console.log(`[Terminal] ws.onopen id=${instanceId}`);
+    session.reconnectAttempts = 0;
     try {
       session.fitAddon.fit();
       const dims = session.fitAddon.proposeDimensions();
@@ -110,7 +135,6 @@ function connectWs(): WebSocket {
   };
 
   ws.onmessage = (event) => {
-    if (!session) return;
     if (event.data instanceof ArrayBuffer) {
       session.xterm.write(new Uint8Array(event.data));
     } else {
@@ -118,61 +142,92 @@ function connectWs(): WebSocket {
     }
   };
 
-  ws.onerror = () => {
-    session?.xterm.write('\r\n\x1b[38;2;248;113;113m[Connection error]\x1b[0m\r\n');
+  ws.onerror = (e) => {
+    console.warn(`[Terminal] ws.onerror id=${instanceId}`, e);
+    if (sessions.has(instanceId)) {
+      session.xterm.write('\r\n\x1b[38;2;248;113;113m[Connection error]\x1b[0m\r\n');
+    }
   };
 
-  ws.onclose = () => {
-    if (currentWs === ws) currentWs = null;
-    if (!session) return;
+  ws.onclose = (e) => {
+    console.log(`[Terminal] ws.onclose id=${instanceId} code=${e.code} reason="${e.reason}" wasClean=${e.wasClean} session.ws===ws:${session.ws === ws} inMap:${sessions.has(instanceId)}`);
+    if (session.ws === ws) session.ws = null;
+    if (!sessions.has(instanceId)) return; // session was destroyed — don't reconnect
 
-    if (reconnectAttempts < MAX_RECONNECT) {
-      reconnectAttempts++;
+    if (session.reconnectAttempts < MAX_RECONNECT) {
+      session.reconnectAttempts++;
       session.xterm.write('\r\n\x1b[38;2;251;191;36m[Shell exited \u2014 reconnecting...]\x1b[0m\r\n');
-      reconnectTimer = window.setTimeout(() => {
-        reconnectTimer = null;
-        connectWs();
+      session.reconnectTimer = window.setTimeout(() => {
+        session.reconnectTimer = null;
+        if (sessions.has(instanceId)) connectWs(instanceId);
       }, RECONNECT_DELAY);
     } else {
       session.xterm.write('\r\n\x1b[38;2;248;113;113m[Disconnected]\x1b[0m\r\n');
       session.xterm.write('\x1b[38;2;110;180;255m[Right-click \u2192 Reconnect]\x1b[0m\r\n');
-      // Do NOT reset reconnectAttempts — only forceReconnect() resets
+      session.reconnectAttempts = 0;
     }
-    notifyRerender?.();
+    session.notifyRerender?.();
   };
-
-  return ws;
 }
 
-function forceReconnect() {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
+function forceReconnect(instanceId: string): void {
+  const session = sessions.get(instanceId);
+  if (!session) return;
+
+  if (session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer);
+    session.reconnectTimer = null;
   }
-  if (currentWs) {
-    currentWs.close();
-    currentWs = null;
+  if (session.ws) {
+    session.ws.close();
+    session.ws = null;
   }
-  reconnectAttempts = 0;
-  session?.xterm.write('\r\n\x1b[38;2;110;180;255m[Reconnecting...]\x1b[0m\r\n');
-  connectWs();
+  session.reconnectAttempts = 0;
+  session.xterm.write('\r\n\x1b[38;2;110;180;255m[Reconnecting...]\x1b[0m\r\n');
+  connectWs(instanceId);
 }
 
-function getOrCreateSession(): TermSession {
+function getOrCreateSession(instanceId: string): TermSession {
+  let session = sessions.get(instanceId);
+  const existed = !!session;
   if (!session) {
-    session = createXterm();
+    session = createXterm(instanceId);
   }
-  // Only auto-connect if we haven't exhausted reconnect attempts
-  if (reconnectAttempts < MAX_RECONNECT && (!currentWs || currentWs.readyState > WebSocket.OPEN)) {
-    connectWs();
+  const wsState = session.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][session.ws.readyState] : 'null';
+  console.log(`[Terminal] getOrCreateSession id=${instanceId} existed=${existed} wsState=${wsState}`);
+  if (!session.ws || session.ws.readyState > WebSocket.OPEN) {
+    connectWs(instanceId);
   }
   return session;
+}
+
+/** Destroy a terminal session: close WS, dispose xterm, remove from Map.
+ *  Called by layoutStore when a detached terminal panel is closed. */
+export function destroyTerminalSession(instanceId: string): void {
+  const session = sessions.get(instanceId);
+  console.log(`[Terminal] destroyTerminalSession id=${instanceId} exists=${!!session}`);
+  if (!session) return;
+
+  if (session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer);
+    session.reconnectTimer = null;
+  }
+  if (session.ws) {
+    session.ws.close();
+    session.ws = null;
+  }
+  session.xterm.dispose();
+  sessions.delete(instanceId);
 }
 
 // ── React component ──
 
 interface TerminalProps {
+  instanceId: string;
   active?: boolean;
+  /** If true, do NOT destroy the xterm session on unmount.
+   *  Use for the base 'terminal' panel which is toggled visible/hidden. */
+  persistent?: boolean;
 }
 
 // Feather-style SVG icons (14x14)
@@ -224,131 +279,44 @@ const TERM_ICONS = {
   ),
 };
 
-export default function TerminalComponent({ active }: TerminalProps) {
+export default function TerminalComponent({ instanceId, active, persistent }: TerminalProps) {
   const termRef = useRef<HTMLDivElement>(null);
+  // Store persistent/instanceId in refs to access stable values in cleanup
+  const persistentRef = useRef(persistent);
+  const instanceIdRef = useRef(instanceId);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [, setTick] = useState(0);
 
-  // Register re-render notifier for reconnect status updates
-  useEffect(() => {
-    notifyRerender = () => setTick((t) => t + 1);
-    return () => { notifyRerender = null; };
-  }, []);
-
-  // Touch handling: scroll by swiping + long-press context menu
-  // xterm.js canvas doesn't support native touch scroll, so we translate
-  // touch moves into xterm.scrollLines() calls manually.
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const longPressTimer = useRef<number>(0);
-  const touchStartPos = useRef({ x: 0, y: 0 });
-  const touchLastY = useRef(0);
-  const scrolling = useRef(false);
-
-  useEffect(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-
-    const LONG_PRESS_MS = 500;
-    const MOVE_THRESHOLD = 10; // px before we consider it a scroll
-    const LINE_HEIGHT = session?.xterm.options.fontSize
-      ? Math.ceil(session.xterm.options.fontSize * 1.2)
-      : 16;
-
-    let accumulatedDelta = 0;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      touchStartPos.current = { x: t.clientX, y: t.clientY };
-      touchLastY.current = t.clientY;
-      scrolling.current = false;
-      accumulatedDelta = 0;
-
-      // Start long-press timer
-      longPressTimer.current = window.setTimeout(() => {
-        if (!scrolling.current) {
-          setCtxMenu({ x: touchStartPos.current.x, y: touchStartPos.current.y });
-        }
-        longPressTimer.current = 0;
-      }, LONG_PRESS_MS);
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-
-      // Check if we've moved enough to count as scroll
-      if (!scrolling.current) {
-        const dx = t.clientX - touchStartPos.current.x;
-        const dy = t.clientY - touchStartPos.current.y;
-        if (Math.abs(dy) > MOVE_THRESHOLD || Math.abs(dx) > MOVE_THRESHOLD) {
-          scrolling.current = true;
-          // Cancel long-press — user is scrolling
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = 0;
-          }
-        }
-      }
-
-      if (scrolling.current && session) {
-        const deltaY = touchLastY.current - t.clientY; // positive = scroll down
-        touchLastY.current = t.clientY;
-        accumulatedDelta += deltaY;
-
-        // Convert pixel delta to lines
-        const lines = Math.trunc(accumulatedDelta / LINE_HEIGHT);
-        if (lines !== 0) {
-          session.xterm.scrollLines(lines);
-          accumulatedDelta -= lines * LINE_HEIGHT;
-        }
-      }
-    };
-
-    const onTouchEnd = () => {
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = 0;
-      }
-      scrolling.current = false;
-      accumulatedDelta = 0;
-    };
-
-    // passive: true — we never call preventDefault, browser can handle its own stuff
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: true });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
-      clearTimeout(longPressTimer.current);
-    };
-  }, []);
+  // Long-press for mobile context menu
+  const { handlers: longPressHandlers } = useLongPress({
+    onLongPress: (x, y) => setCtxMenu({ x, y }),
+  });
 
   const fit = useCallback(() => {
-    if (!session) return;
+    const s = sessions.get(instanceId);
+    if (!s) return;
     try {
-      session.fitAddon.fit();
-      const dims = session.fitAddon.proposeDimensions();
-      if (dims && currentWs?.readyState === WebSocket.OPEN) {
-        currentWs.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
+      s.fitAddon.fit();
+      const dims = s.fitAddon.proposeDimensions();
+      if (dims && s.ws?.readyState === WebSocket.OPEN) {
+        s.ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [instanceId]);
 
   useEffect(() => {
     const el = termRef.current;
     if (!el) return;
 
-    const s = getOrCreateSession();
+    console.log(`[Terminal] useEffect MOUNT id=${instanceId} persistent=${persistent}`);
+    const s = getOrCreateSession(instanceId);
 
-    // Attach xterm to this DOM element (re-open if container changed)
+    // Register re-render notifier
+    s.notifyRerender = () => setTick((t) => t + 1);
+
+    // Attach xterm to this DOM element (re-attach if container changed)
     if (s.container !== el) {
       if (s.container) {
         const xtermEl = s.xterm.element?.parentElement;
@@ -367,9 +335,16 @@ export default function TerminalComponent({ active }: TerminalProps) {
     resizeObserver.observe(el);
 
     return () => {
+      console.log(`[Terminal] useEffect CLEANUP id=${instanceIdRef.current} persistent=${persistentRef.current}`);
       resizeObserver.disconnect();
+      // Destroy session on unmount only for non-persistent (detached) terminals
+      if (!persistentRef.current) {
+        destroyTerminalSession(instanceIdRef.current);
+      }
     };
-  }, [fit]);
+  // fit intentionally excluded: instanceId change re-runs the effect, fit is stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instanceId]);
 
   useEffect(() => {
     if (active) setTimeout(fit, 50);
@@ -384,11 +359,11 @@ export default function TerminalComponent({ active }: TerminalProps) {
 
   const handleCtxAction = useCallback((action: string) => {
     setCtxMenu(null);
-    if (!session) return;
+    const s = sessions.get(instanceId);
 
     switch (action) {
       case 'copy': {
-        const sel = session.xterm.getSelection();
+        const sel = s?.xterm.getSelection();
         if (sel) {
           navigator.clipboard.writeText(sel)
             .then(() => toast.success('Copied'))
@@ -399,82 +374,87 @@ export default function TerminalComponent({ active }: TerminalProps) {
       case 'paste':
         navigator.clipboard.readText()
           .then((text) => {
-            if (text && currentWs?.readyState === WebSocket.OPEN) {
-              currentWs.send(new TextEncoder().encode(text));
+            if (text && s?.ws?.readyState === WebSocket.OPEN) {
+              s.ws!.send(new TextEncoder().encode(text));
             }
           })
           .catch(() => toast.error('Failed to paste'));
         break;
       case 'select-all':
-        session.xterm.selectAll();
+        s?.xterm.selectAll();
         break;
       case 'find':
         setSearchVisible(true);
         break;
       case 'font-increase': {
-        const cur = session.xterm.options.fontSize || DEFAULT_FONT_SIZE;
+        if (!s) break;
+        const cur = s.xterm.options.fontSize || DEFAULT_FONT_SIZE;
         const next = Math.min(cur + 1, MAX_FONT_SIZE);
-        session.xterm.options.fontSize = next;
+        s.xterm.options.fontSize = next;
         localStorage.setItem(FONT_SIZE_KEY, String(next));
         fit();
         break;
       }
       case 'font-decrease': {
-        const cur = session.xterm.options.fontSize || DEFAULT_FONT_SIZE;
+        if (!s) break;
+        const cur = s.xterm.options.fontSize || DEFAULT_FONT_SIZE;
         const next = Math.max(cur - 1, MIN_FONT_SIZE);
-        session.xterm.options.fontSize = next;
+        s.xterm.options.fontSize = next;
         localStorage.setItem(FONT_SIZE_KEY, String(next));
         fit();
         break;
       }
       case 'clear':
-        if (currentWs?.readyState === WebSocket.OPEN) {
-          currentWs.send(new TextEncoder().encode('\x0c'));
+        if (s?.ws?.readyState === WebSocket.OPEN) {
+          s.ws!.send(new TextEncoder().encode('\x0c'));
         }
         break;
       case 'clear-all':
-        session.xterm.clear();
-        if (currentWs?.readyState === WebSocket.OPEN) {
-          currentWs.send(new TextEncoder().encode('\x0c'));
+        s?.xterm.clear();
+        if (s?.ws?.readyState === WebSocket.OPEN) {
+          s.ws!.send(new TextEncoder().encode('\x0c'));
         }
         break;
       case 'reconnect':
-        forceReconnect();
+        forceReconnect(instanceId);
         break;
     }
-  }, [fit]);
+  }, [instanceId, fit]);
 
   // ── Search ──
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearchTerm(val);
-    if (val) session?.searchAddon.findNext(val);
-  }, []);
+    const s = sessions.get(instanceId);
+    if (val) s?.searchAddon.findNext(val);
+  }, [instanceId]);
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const s = sessions.get(instanceId);
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (e.shiftKey) session?.searchAddon.findPrevious(searchTerm);
-      else session?.searchAddon.findNext(searchTerm);
+      if (e.shiftKey) s?.searchAddon.findPrevious(searchTerm);
+      else s?.searchAddon.findNext(searchTerm);
     }
     if (e.key === 'Escape') {
       setSearchVisible(false);
       setSearchTerm('');
-      session?.searchAddon.clearDecorations();
+      s?.searchAddon.clearDecorations();
     }
-  }, [searchTerm]);
+  }, [instanceId, searchTerm]);
 
   const closeSearch = useCallback(() => {
     setSearchVisible(false);
     setSearchTerm('');
-    session?.searchAddon.clearDecorations();
-  }, []);
+    sessions.get(instanceId)?.searchAddon.clearDecorations();
+  }, [instanceId]);
 
   // ── Build menu items ──
 
-  const hasSelection = session?.xterm.hasSelection() ?? false;
-  const isConnected = currentWs?.readyState === WebSocket.OPEN;
+  const s = sessions.get(instanceId);
+  const hasSelection = s?.xterm.hasSelection() ?? false;
+  const isConnected = s?.ws?.readyState === WebSocket.OPEN;
 
   const ctxMenuItems: ContextMenuItem[] = [
     { label: 'Copy', action: 'copy', icon: TERM_ICONS.copy, disabled: !hasSelection },
@@ -493,7 +473,6 @@ export default function TerminalComponent({ active }: TerminalProps) {
 
   return (
     <div
-      ref={wrapperRef}
       className="h-full relative"
       style={{ background: '#0a0a1a' }}
       onContextMenu={handleContextMenu}
@@ -501,6 +480,7 @@ export default function TerminalComponent({ active }: TerminalProps) {
       <div
         ref={termRef}
         className="h-full"
+        {...longPressHandlers}
       />
 
       {/* Search bar */}
@@ -516,7 +496,7 @@ export default function TerminalComponent({ active }: TerminalProps) {
           <button
             type="button"
             title="Previous (Shift+Enter)"
-            onClick={() => session?.searchAddon.findPrevious(searchTerm)}
+            onClick={() => sessions.get(instanceId)?.searchAddon.findPrevious(searchTerm)}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="18 15 12 9 6 15" />
@@ -525,7 +505,7 @@ export default function TerminalComponent({ active }: TerminalProps) {
           <button
             type="button"
             title="Next (Enter)"
-            onClick={() => session?.searchAddon.findNext(searchTerm)}
+            onClick={() => sessions.get(instanceId)?.searchAddon.findNext(searchTerm)}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9" />

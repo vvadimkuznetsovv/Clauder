@@ -12,13 +12,18 @@ import {
   cloneTree,
   isDetachedEditor,
   makeDetachedPanelId,
+  isDetachedTerminal,
+  getDetachedTerminalId,
+  makeDetachedTerminalPanelId,
   findPanelNode,
   removePanelFromTree,
   insertPanelAtNode,
   insertPanelAtEdge,
   insertPanelIntoNode,
+  getAllPanelIds,
 } from './layoutUtils';
 import { useWorkspaceStore } from './workspaceStore';
+import { destroyTerminalSession } from '../components/terminal/Terminal';
 
 export type { PanelId };
 export type { LayoutNode, PanelNode, GroupNode } from './layoutUtils';
@@ -63,6 +68,9 @@ interface LayoutState {
   detachEditorTabToMerge: (tabId: string, targetNodeId: string) => void;
   reattachEditor: (panelId: PanelId) => void;
   removeDetachedPanel: (panelId: PanelId) => void;
+
+  // Detached terminals
+  openNewTerminal: () => void;
 
   // DnD
   setDragging: (panelId: PanelId | null) => void;
@@ -172,6 +180,17 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       const wasVisible = state.visibility[panelId];
       const newVis = { ...state.visibility, [panelId]: !wasVisible };
 
+      // For detached terminals: hiding = close (destroy session + remove from layout)
+      if (wasVisible && isDetachedTerminal(panelId)) {
+        const instanceId = getDetachedTerminalId(panelId);
+        if (instanceId) destroyTerminalSession(instanceId);
+        const newLayout = removePanelFromTree(state.layout, panelId) || state.layout;
+        delete newVis[panelId];
+        const next = { ...state, layout: newLayout, visibility: newVis };
+        saveToStorage(next);
+        return { layout: newLayout, visibility: newVis };
+      }
+
       // For detached editors: hiding = close (remove from layout)
       if (wasVisible && isDetachedEditor(panelId)) {
         const tabId = panelId.slice('editor:'.length);
@@ -222,6 +241,13 @@ export const useLayoutStore = create<LayoutState>((set) => ({
 
   resetLayout: () => {
     set((state) => {
+      // Destroy all detached terminals
+      for (const panelId of getAllPanelIds(state.layout)) {
+        if (isDetachedTerminal(panelId)) {
+          const instanceId = getDetachedTerminalId(panelId);
+          if (instanceId) destroyTerminalSession(instanceId);
+        }
+      }
       // Reattach all detached editors back to FM before reset
       const ws = useWorkspaceStore.getState();
       for (const tabId of Object.keys(ws.detachedEditors)) {
@@ -322,10 +348,32 @@ export const useLayoutStore = create<LayoutState>((set) => ({
 
   // Remove a detached panel from layout (without reattaching)
   removeDetachedPanel: (panelId) => {
+    // Destroy terminal session if removing a detached terminal
+    if (isDetachedTerminal(panelId)) {
+      const instanceId = getDetachedTerminalId(panelId);
+      if (instanceId) destroyTerminalSession(instanceId);
+    }
     set((state) => {
       const newLayout = removePanelFromTree(state.layout, panelId) || state.layout;
       const newVis = { ...state.visibility };
       delete newVis[panelId];
+      const next = { ...state, layout: newLayout, visibility: newVis };
+      saveToStorage(next);
+      return { layout: newLayout, visibility: newVis };
+    });
+  },
+
+  // Open a new terminal instance as a separate panel
+  openNewTerminal: () => {
+    const instanceId = `term-${Date.now()}`;
+    const panelId = makeDetachedTerminalPanelId(instanceId);
+    set((state) => {
+      // Place next to the existing terminal node if possible, otherwise at bottom edge
+      const termNode = findPanelNode(state.layout, 'terminal');
+      const newLayout = termNode
+        ? insertPanelAtNode(state.layout, panelId, termNode.id, 'right')
+        : insertPanelAtEdge(state.layout, panelId, 'bottom');
+      const newVis = { ...state.visibility, [panelId]: true };
       const next = { ...state, layout: newLayout, visibility: newVis };
       saveToStorage(next);
       return { layout: newLayout, visibility: newVis };
@@ -384,9 +432,15 @@ export const useLayoutStore = create<LayoutState>((set) => ({
         useWorkspaceStore.getState().reattachEditor(tabId);
       }
 
+      // For detached terminals: destroy session
+      if (isDetachedTerminal(panel)) {
+        const instanceId = getDetachedTerminalId(panel);
+        if (instanceId) destroyTerminalSession(instanceId);
+      }
+
       // Hide the panel from visibility so it disappears from tab bar
       const newVis = { ...state.visibility, [panel]: false };
-      if (isDetachedEditor(panel)) delete newVis[panel];
+      if (isDetachedEditor(panel) || isDetachedTerminal(panel)) delete newVis[panel];
 
       // Remove from mobilePanels
       let newPanels = state.mobilePanels.filter((p) => p !== panel);
@@ -401,7 +455,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       }
 
       let newLayout = state.layout;
-      if (isDetachedEditor(panel)) {
+      if (isDetachedEditor(panel) || isDetachedTerminal(panel)) {
         newLayout = removePanelFromTree(state.layout, panel) || state.layout;
       }
 
