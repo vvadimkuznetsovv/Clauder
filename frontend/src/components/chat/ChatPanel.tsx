@@ -13,8 +13,6 @@ type Status = 'checking' | 'ok' | 'unavailable';
 
 let iframeWrapper: HTMLDivElement | null = null;
 let iframeEl: HTMLIFrameElement | null = null;
-let iframeToken: string | null = null; // token used when iframe was created
-
 function ensureIframe(token: string): void {
   if (iframeWrapper) return; // already created
 
@@ -30,7 +28,6 @@ function ensureIframe(token: string): void {
   iframeEl.style.cssText =
     'width:100%;height:100%;border:0;background:#1e1e1e;pointer-events:auto;';
   iframeWrapper.appendChild(iframeEl);
-  iframeToken = token;
 }
 
 function showIframe(rect: DOMRect): void {
@@ -57,14 +54,24 @@ function isIframeCreated(): boolean {
 export default function ChatPanel(_props: ChatPanelProps) {
   const token = useAuthStore((s) => s.accessToken);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<Status>(() => isIframeCreated() ? 'ok' : 'checking');
 
-  // Probe code-server (only if iframe not yet created)
+  // Probe result tracks which token was probed — auto-resets on token change
+  const [probe, setProbe] = useState<{ token: string; result: 'ok' | 'failed' } | null>(
+    isIframeCreated() ? { token: '', result: 'ok' } : null,
+  );
+
+  // Derive status: no refs, no setState during render
+  const status: Status =
+    isIframeCreated() ? 'ok' :
+    !token ? 'unavailable' :
+    (probe?.token === token && probe.result === 'ok') ? 'ok' :
+    (probe?.token === token && probe.result === 'failed') ? 'unavailable' :
+    'checking';
+
+  // Probe code-server (fires when status is 'checking')
   useEffect(() => {
-    if (isIframeCreated()) { setStatus('ok'); return; }
-    if (!token) { setStatus('unavailable'); return; }
+    if (status !== 'checking' || !token || isIframeCreated()) return;
 
-    setStatus('checking');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
 
@@ -72,16 +79,16 @@ export default function ChatPanel(_props: ChatPanelProps) {
       .then(res => {
         if (res.ok) {
           ensureIframe(token);
-          setStatus('ok');
+          setProbe({ token, result: 'ok' });
         } else {
-          setStatus('unavailable');
+          setProbe({ token, result: 'failed' });
         }
       })
-      .catch(() => { setStatus('unavailable'); })
+      .catch(() => { setProbe({ token, result: 'failed' }); })
       .finally(() => clearTimeout(timer));
 
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [token]);
+  }, [status, token]);
 
   // Sync iframe position to our container
   const syncPosition = useCallback(() => {
@@ -151,7 +158,7 @@ export default function ChatPanel(_props: ChatPanelProps) {
         </div>
         <button
           type="button"
-          onClick={() => { setStatus('checking'); }}
+          onClick={() => { setProbe(null); }}
           style={{
             padding: '8px 20px',
             borderRadius: 8,

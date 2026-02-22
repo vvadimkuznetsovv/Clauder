@@ -263,7 +263,7 @@ export default function Workspace() {
 
               {/* Fallback: sidebar toggle when all panels are hidden */}
               {!anyPanelVisible && (
-                <div className="h-full flex items-center justify-center">
+                <div className="absolute top-2 left-2 z-20">
                   <button
                     type="button"
                     className="global-panel-bar-sidebar-btn"
