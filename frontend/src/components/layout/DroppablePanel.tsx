@@ -121,8 +121,25 @@ export default function DroppablePanel({ node, isFirst = false }: DroppablePanel
             <DragHeader panelId={visiblePanelIds[0] || activePanelId} nodeId={node.id} showSidebarBtn={isFirst} />
           )}
 
-          <div className="flex-1 overflow-hidden">
-            <PanelContent panelId={visiblePanelIds.includes(activePanelId) ? activePanelId : visiblePanelIds[0] || activePanelId} />
+          {/* Render all visible tabs but hide inactive ones — keeps iframes (chat/preview)
+              alive in the DOM so they don't reload on tab switch. */}
+          <div className="flex-1 overflow-hidden" style={{ position: 'relative' }}>
+            {visiblePanelIds.map((id) => {
+              const isActive = id === (visiblePanelIds.includes(activePanelId) ? activePanelId : visiblePanelIds[0] || activePanelId);
+              return (
+                <div
+                  key={id}
+                  style={{
+                    display: isActive ? 'flex' : 'none',
+                    flexDirection: 'column',
+                    width: '100%',
+                    height: '100%',
+                  }}
+                >
+                  <PanelContent panelId={id} />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
