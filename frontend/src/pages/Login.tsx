@@ -27,21 +27,21 @@ function PillInput({ type = 'text', value, onChange, placeholder, autoFocus, end
     const el = wrapRef.current;
     if (!el) return;
     if (on) {
-      el.style.borderColor = 'rgba(127,0,255,0.5)';
-      el.style.boxShadow = '0 0 0 4px rgba(127,0,255,0.1), 0 0 25px rgba(127,0,255,0.06), inset 0 2px 6px rgba(0,0,0,0.3)';
-      el.style.background = 'rgba(0,0,0,0.5)';
+      el.style.borderColor = 'rgba(127,0,255,0.6)';
+      el.style.boxShadow = '0 0 0 4px rgba(127,0,255,0.12), 0 0 25px rgba(127,0,255,0.08), inset 0 2px 6px rgba(0,0,0,0.4)';
+      el.style.background = 'rgba(0,0,0,0.8)';
     } else {
-      el.style.borderColor = 'rgba(255,255,255,0.12)';
-      el.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.3), inset 0 -1px 0 rgba(255,255,255,0.04)';
-      el.style.background = 'rgba(0,0,0,0.35)';
+      el.style.borderColor = 'rgba(255,255,255,0.25)';
+      el.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(255,255,255,0.04)';
+      el.style.background = 'rgba(0,0,0,0.75)';
     }
   };
   return (
     <div ref={wrapRef} style={{
       borderRadius: '9999px', overflow: 'hidden',
-      background: 'rgba(0,0,0,0.6)',
-      border: '1px solid rgba(255,255,255,0.2)',
-      boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.04)',
+      background: 'rgba(0,0,0,0.75)',
+      border: '1px solid rgba(255,255,255,0.25)',
+      boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(255,255,255,0.04)',
       transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
       backdropFilter: 'blur(12px) saturate(150%)',
       WebkitBackdropFilter: 'blur(12px) saturate(150%)',
@@ -52,11 +52,12 @@ function PillInput({ type = 'text', value, onChange, placeholder, autoFocus, end
         autoComplete="off"
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         {...rest}
+        className="login-pill-input"
         style={{
           width: '100%', padding: '18px 28px', paddingRight: endIcon ? '52px' : '28px',
           fontSize: '16px', fontWeight: 500,
           background: 'transparent', border: 'none',
-          color: 'rgba(255,255,255,0.95)', outline: 'none', borderRadius: '9999px',
+          color: '#fff', outline: 'none', borderRadius: '9999px',
         }}
       />
       {endIcon && (
