@@ -821,19 +821,22 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.3);
-    background: transparent;
-    border: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(127, 0, 255, 0.18);
+    border: 1px solid rgba(180, 120, 255, 0.55);
+    box-shadow: 0 0 10px 2px rgba(140, 60, 255, 0.35);
     cursor: pointer;
     transition: all 0.15s ease;
     flex-shrink: 0;
   }
   .panel-close-btn:hover {
-    color: rgba(255, 255, 255, 0.7);
-    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    background: rgba(127, 0, 255, 0.25);
+    border-color: rgba(180, 120, 255, 0.7);
+    box-shadow: 0 0 14px 3px rgba(140, 60, 255, 0.5);
   }
 
   /* Drag & Drop — Droppable slots */
@@ -1275,13 +1278,13 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.9);
-    background: rgba(127, 0, 255, 0.14);
-    border: 1px solid rgba(180, 120, 255, 0.45);
-    box-shadow: 0 0 8px 2px rgba(140, 60, 255, 0.3), inset 0 0 4px rgba(127, 0, 255, 0.1);
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(127, 0, 255, 0.18);
+    border: 1px solid rgba(180, 120, 255, 0.55);
+    box-shadow: 0 0 10px 2px rgba(140, 60, 255, 0.35), inset 0 0 4px rgba(127, 0, 255, 0.1);
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     cursor: pointer;
@@ -1291,10 +1294,10 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
   }
   .panel-tab-close:hover {
     animation: none;
-    color: rgba(255, 255, 255, 0.95);
-    background: rgba(127, 0, 255, 0.12);
-    border-color: rgba(127, 0, 255, 0.3);
-    box-shadow: 0 0 10px 2px rgba(127, 0, 255, 0.35), inset 0 0 6px rgba(127, 0, 255, 0.12);
+    color: #fff;
+    background: rgba(127, 0, 255, 0.25);
+    border-color: rgba(180, 120, 255, 0.7);
+    box-shadow: 0 0 14px 3px rgba(140, 60, 255, 0.5), inset 0 0 6px rgba(127, 0, 255, 0.15);
   }
   /* Hidden by default — close button on non-active tabs */
   .panel-tab-close-compact { display: none; }
@@ -1406,13 +1409,13 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.9);
-    background: rgba(127, 0, 255, 0.14);
-    border: 1px solid rgba(180, 120, 255, 0.45);
-    box-shadow: 0 0 8px 2px rgba(140, 60, 255, 0.3), inset 0 0 4px rgba(127, 0, 255, 0.1);
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(127, 0, 255, 0.18);
+    border: 1px solid rgba(180, 120, 255, 0.55);
+    box-shadow: 0 0 10px 2px rgba(140, 60, 255, 0.35), inset 0 0 4px rgba(127, 0, 255, 0.1);
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     cursor: pointer;
@@ -1422,10 +1425,10 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
   }
   .tab-close-btn:hover {
     animation: none;
-    color: rgba(255, 255, 255, 0.95);
-    background: rgba(127, 0, 255, 0.12);
-    border-color: rgba(127, 0, 255, 0.3);
-    box-shadow: 0 0 10px 2px rgba(127, 0, 255, 0.35), inset 0 0 6px rgba(127, 0, 255, 0.12);
+    color: #fff;
+    background: rgba(127, 0, 255, 0.25);
+    border-color: rgba(180, 120, 255, 0.7);
+    box-shadow: 0 0 14px 3px rgba(140, 60, 255, 0.5), inset 0 0 6px rgba(127, 0, 255, 0.15);
   }
 
   /* File tree items — glass shimmer like close buttons */
