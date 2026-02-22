@@ -1,6 +1,10 @@
 package handlers
 
 import (
+	"bufio"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -84,12 +88,17 @@ func (r *headRecorder) WriteHeader(status int)      { r.status = status }
 // CodeServerProxy returns a Gin handler that reverse-proxies to code-server.
 // Auth is handled by CodeServerAuthMiddleware on the route group.
 //
-// code-server doesn't support HEAD on all paths (returns 405). The handler
-// converts HEAD requests to GET internally and strips the response body so
-// that code-server's own web client (running inside the iframe) doesn't
-// break when it checks workspace/folder existence via HEAD.
+// WebSocket connections are handled via raw TCP hijacking (proxyWebSocket) because
+// httputil.ReverseProxy calls rw.WriteHeader(101) AFTER Hijack(), but Gin's
+// ResponseWriter blocks WriteHeader once Written()=true (set inside Hijack).
+// This prevents the 101 Switching Protocols response from reaching the client,
+// causing WebSocket 1006 errors in code-server's extension host.
+//
+// Regular HTTP requests go through httputil.ReverseProxy.
+// HEAD requests are converted to GET internally (code-server returns 405 on HEAD).
 func CodeServerProxy() gin.HandlerFunc {
-	target, _ := url.Parse("http://code-server:8443")
+	const targetHost = "code-server:8443"
+	target, _ := url.Parse("http://" + targetHost)
 
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
@@ -125,6 +134,83 @@ func CodeServerProxy() gin.HandlerFunc {
 			c.Writer.WriteHeader(rec.status)
 			return
 		}
+
+		// WebSocket upgrade: bypass httputil.ReverseProxy — see proxyWebSocket.
+		if strings.EqualFold(c.Request.Header.Get("Upgrade"), "websocket") {
+			path := strings.TrimPrefix(c.Request.URL.Path, "/code")
+			if path == "" {
+				path = "/"
+			}
+			q := c.Request.URL.Query()
+			q.Del("token")
+			proxyWebSocket(c, targetHost, path, q.Encode())
+			return
+		}
+
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
+}
+
+// proxyWebSocket tunnels a WebSocket connection to code-server via raw TCP.
+//
+// Root cause of the 1006 bug:
+//   httputil.ReverseProxy.handleUpgradeResponse calls hj.Hijack() then rw.WriteHeader(101).
+//   Gin's Hijack() sets responseWriter.size=0 → Written()=true.
+//   Gin's WriteHeader then returns early (prints a debug warning, does nothing).
+//   The underlying http.ResponseWriter.WriteHeader(101) is never called.
+//   brw.Flush() flushes an empty buffer. The client never receives 101.
+//   The browser WebSocket sees the connection close without an upgrade response → 1006.
+//
+// Fix: hijack both sides manually, forward the handshake, then copy frames bidirectionally.
+func proxyWebSocket(c *gin.Context, targetHost, path, rawQuery string) {
+	// Hijack the client TCP connection from Gin
+	hj, ok := c.Writer.(http.Hijacker)
+	if !ok {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	clientConn, clientBuf, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	defer clientConn.Close()
+
+	// Dial code-server directly
+	backendConn, err := net.DialTimeout("tcp", targetHost, 10*time.Second)
+	if err != nil {
+		fmt.Fprintf(clientBuf, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+		clientBuf.Flush() //nolint:errcheck
+		return
+	}
+	defer backendConn.Close()
+
+	// Rewrite and forward the WebSocket upgrade request to code-server
+	req := c.Request.Clone(c.Request.Context())
+	req.URL = &url.URL{Path: path, RawQuery: rawQuery}
+	req.Host = targetHost
+	if err := req.Write(backendConn); err != nil {
+		return
+	}
+
+	// Read code-server's response (expected: 101 Switching Protocols)
+	backendReader := bufio.NewReader(backendConn)
+	resp, err := http.ReadResponse(backendReader, req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
+
+	// Write the response to the client through the hijacked connection
+	fmt.Fprintf(clientBuf, "HTTP/1.1 %s\r\n", resp.Status)
+	resp.Header.Write(clientBuf) //nolint:errcheck
+	fmt.Fprintf(clientBuf, "\r\n")
+	if err := clientBuf.Flush(); err != nil {
+		return
+	}
+
+	// Bidirectional copy: WebSocket frames flow both ways until one side closes
+	errc := make(chan error, 2)
+	go func() { _, err := io.Copy(backendConn, clientBuf); errc <- err }()
+	go func() { _, err := io.Copy(clientConn, backendReader); errc <- err }()
+	<-errc
 }
