@@ -24,11 +24,12 @@ jobs:
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S sh -c 'cd /opt/clauder/backend && /usr/local/go/bin/go build -o clauder .'
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml build
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml down
-            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml up -d
 
-            # Stop host nginx (Docker nginx takes over ports 80/443)
+            # Stop host nginx before starting Docker nginx (ports 80/443)
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S systemctl stop nginx 2>/dev/null || true
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S systemctl disable nginx 2>/dev/null || true
+
+            echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S docker compose -f /opt/clauder/docker-compose.yml up -d
 
             # Certbot renewal hook: reload Docker nginx on certificate renewal
             echo "${{ secrets.ROOT_PASSWORD }}" | sudo -S mkdir -p /etc/letsencrypt/renewal-hooks/deploy
