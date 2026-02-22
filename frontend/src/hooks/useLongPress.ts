@@ -3,9 +3,9 @@ import { useRef, useCallback } from 'react';
 /** Merge two sets of event handlers so both fire for the same event key */
 export function mergeEventHandlers(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  a: Record<string, ((...args: any[]) => void) | undefined> | undefined,
+  a: Record<string, any> | undefined,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  b: Record<string, ((...args: any[]) => void) | undefined> | undefined,
+  b: Record<string, any> | undefined,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, (...args: any[]) => void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
