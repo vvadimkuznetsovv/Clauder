@@ -20,10 +20,14 @@ interface ContextMenuProps {
 
 const EDGE_PADDING = 8;
 
+// Module-level singleton — closes any open menu when a new one mounts
+const menuCloser = new EventTarget();
+
 export default function ContextMenu({ x, y, items, onAction, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [pos, setPos] = useState({ left: 0, top: 0 });
+  const [positioned, setPositioned] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const [maxH, setMaxH] = useState<number | undefined>(undefined);
 
@@ -32,39 +36,59 @@ export default function ContextMenu({ x, y, items, onAction, onClose }: ContextM
     .map((item, i) => (item.type !== 'separator' && !item.disabled ? i : -1))
     .filter(i => i !== -1);
 
+  // Close any existing menu when this one mounts (one menu at a time)
+  useEffect(() => {
+    const self = { dispatched: false };
+    const handleClose = () => {
+      if (self.dispatched) { self.dispatched = false; return; }
+      onClose();
+    };
+    menuCloser.addEventListener('close', handleClose);
+    self.dispatched = true;
+    menuCloser.dispatchEvent(new Event('close'));
+    return () => menuCloser.removeEventListener('close', handleClose);
+  }, [onClose]);
+
   // Measure and position after first render
   useLayoutEffect(() => {
     const el = menuRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
+    // Use offsetWidth/offsetHeight — they ignore CSS transforms (scale from animation)
+    // getBoundingClientRect() returns scaled dimensions which causes wrong clamping
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
     const maxHeight = vh - EDGE_PADDING * 2;
+
+    // Constrain height first so clamping uses the actual rendered height
+    const overflowing = h > maxHeight;
+    const effectiveH = overflowing ? maxHeight : h;
 
     let left = x;
     let top = y;
 
     // Clamp X
-    if (left + rect.width > vw - EDGE_PADDING) left = vw - EDGE_PADDING - rect.width;
+    if (left + w > vw - EDGE_PADDING) left = vw - EDGE_PADDING - w;
     if (left < EDGE_PADDING) left = EDGE_PADDING;
 
     // Clamp Y
-    if (top + rect.height > vh - EDGE_PADDING) top = vh - EDGE_PADDING - rect.height;
+    if (top + effectiveH > vh - EDGE_PADDING) top = vh - EDGE_PADDING - effectiveH;
     if (top < EDGE_PADDING) top = EDGE_PADDING;
 
-    const overflowing = rect.height > maxHeight;
-    setPos({ left, top: overflowing ? EDGE_PADDING : top });
+    setPos({ left, top });
     setIsOverflowing(overflowing);
     setMaxH(overflowing ? maxHeight : undefined);
+    setPositioned(true);
   }, [x, y, items]);
 
   // Transform origin from clamping direction
   const originX = pos.left < x ? 'right' : 'left';
   const originY = pos.top < y ? 'bottom' : 'top';
 
-  // Close on outside mousedown, keyboard navigation
+  // Close on outside mousedown/touchstart, keyboard navigation
   useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => {
+    const handleOutside = (e: Event) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -91,10 +115,11 @@ export default function ContextMenu({ x, y, items, onAction, onClose }: ContextM
         if (item?.action && !item.disabled) onAction(item.action);
       }
     };
-    window.addEventListener('mousedown', handleMouseDown);
+    // Use capture phase so clicks inside Monaco editor (which stopPropagation) still close the menu
+    window.addEventListener('pointerdown', handleOutside, true);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('pointerdown', handleOutside, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose, onAction, focusedIndex, actionableIndices, items]);
@@ -116,9 +141,11 @@ export default function ContextMenu({ x, y, items, onAction, onClose }: ContextM
         zIndex: 9999,
         maxHeight: maxH,
         transformOrigin: `${originX} ${originY}`,
+        visibility: positioned ? 'visible' : 'hidden',
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
     >
       <div className="context-menu-scroll" style={{ maxHeight: maxH ? maxH - (isOverflowing ? 44 : 0) : undefined }}>
         {items.map((item, i) =>

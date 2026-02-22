@@ -6,16 +6,17 @@ import ResizeHandle from './ResizeHandle';
 
 interface LayoutRendererProps {
   node: LayoutNode;
+  isFirst?: boolean;
 }
 
-export default function LayoutRenderer({ node }: LayoutRendererProps) {
+export default function LayoutRenderer({ node, isFirst = false }: LayoutRendererProps) {
   const { visibility, updateSizes } = useLayoutStore();
 
   if (node.type === 'panel') {
     // Check if any panelId in this node is visible
     const hasVisible = node.panelIds.some((id) => visibility[id]);
     if (!hasVisible) return null;
-    return <DroppablePanel node={node} />;
+    return <DroppablePanel node={node} isFirst={isFirst} />;
   }
 
   // GroupNode — render Group with children
@@ -35,7 +36,7 @@ export default function LayoutRenderer({ node }: LayoutRendererProps) {
 
   // If only one visible child, render it directly without Group wrapper
   if (visibleChildren.length === 1) {
-    return <LayoutRenderer node={visibleChildren[0].child} />;
+    return <LayoutRenderer node={visibleChildren[0].child} isFirst={isFirst} />;
   }
 
   // Calculate default sizes for visible children (redistribute proportionally)
@@ -76,6 +77,7 @@ export default function LayoutRenderer({ node }: LayoutRendererProps) {
           defaultSize={normalizedSizes[idx]}
           direction={orientation}
           isLast={idx === visibleChildren.length - 1}
+          isFirst={isFirst && idx === 0}
         />
       ))}
     </Group>
@@ -88,11 +90,13 @@ function PanelWithResize({
   defaultSize,
   direction,
   isLast,
+  isFirst,
 }: {
   child: LayoutNode;
   defaultSize: number;
   direction: 'horizontal' | 'vertical';
   isLast: boolean;
+  isFirst: boolean;
 }) {
   return (
     <>
@@ -101,7 +105,7 @@ function PanelWithResize({
         minSize="5%"
         id={child.id}
       >
-        <LayoutRenderer node={child} />
+        <LayoutRenderer node={child} isFirst={isFirst} />
       </Panel>
       {!isLast && (
         <ResizeHandle direction={direction} />

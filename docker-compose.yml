@@ -28,6 +28,22 @@ services:
       - /home/clauder/.ssh:/root/.ssh:ro
       - usr_local:/usr/local
 
+  code-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.code-server
+    container_name: code-server
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+      - DEFAULT_WORKSPACE=/config/workspace
+    volumes:
+      - code-server-config:/config
+      - /home/clauder/workspace:/config/workspace
+
 volumes:
   postgres_data:
   usr_local:
+  code-server-config:

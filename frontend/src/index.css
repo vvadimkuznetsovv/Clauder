@@ -714,26 +714,6 @@
     border-color: rgba(127, 0, 255, 0.35);
   }
 
-  /* Global panel bar — visible when Chat panel is hidden */
-  .global-panel-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(10, 5, 20, 0.6);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    flex-shrink: 0;
-    overflow-x: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,0.1) transparent;
-  }
-  .global-panel-bar::-webkit-scrollbar { height: 3px; }
-  .global-panel-bar::-webkit-scrollbar-track { background: transparent; }
-  .global-panel-bar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
   .global-panel-bar-sidebar-btn {
     display: flex;
     align-items: center;
@@ -909,13 +889,15 @@
   .resize-handle-line {
     position: absolute;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(200, 140, 255, 0.5);
+    box-shadow: 0 0 6px rgba(127, 0, 255, 0.4), 0 0 14px rgba(127, 0, 255, 0.2);
     transition: all 0.15s ease;
   }
   .resize-handle-horizontal .resize-handle-line {
-    width: 2px;
-    height: 40px;
-    max-height: 60%;
+    width: 3px;
+    height: 50px;
+    max-height: 70%;
+    border-radius: 3px;
   }
   .resize-handle-vertical .resize-handle-line {
     height: 2px;
@@ -962,6 +944,17 @@
   @media (pointer: coarse) {
     .resize-handle-horizontal { width: 16px; }
     .resize-handle-vertical { height: 16px; }
+    .resize-handle-horizontal .resize-handle-line {
+      width: 4px;
+      height: 60px;
+      max-height: 80%;
+      background: rgba(200, 140, 255, 0.9);
+      box-shadow:
+        0 0 6px rgba(255, 255, 255, 0.6),
+        0 0 14px rgba(127, 0, 255, 0.8),
+        0 0 28px rgba(127, 0, 255, 0.4);
+      border-radius: 3px;
+    }
     .panel-tab-close { width: 24px; height: 24px; }
     .tab-close-btn { width: 26px; height: 26px; }
   }
@@ -1289,6 +1282,7 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
     color: rgba(255, 255, 255, 0.4);
     background: transparent;
     border-right: 1px solid rgba(255, 255, 255, 0.04);
+    touch-action: none;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
@@ -1304,6 +1298,9 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
     color: rgba(255, 255, 255, 0.9);
     background: rgba(255, 255, 255, 0.06);
     box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .editor-tab.preview .truncate {
+    font-style: italic;
   }
   .tab-modified-dot {
     width: 6px;
@@ -1343,7 +1340,7 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
     background: transparent;
     border: 1px solid transparent;
     border-radius: 6px;
-    margin: 1px 4px;
+    margin: 1px 0;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
@@ -1647,7 +1644,66 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
   .docx-content strong { font-weight: 600; }
   .docx-content em { font-style: italic; }
 
-.xterm { padding: 8px; }
+.xterm { padding: 8px; overscroll-behavior: contain; }
+
+/* ── Terminal search bar ── */
+.terminal-search-bar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(20, 12, 35, 0.92);
+  border: 1px solid rgba(127, 0, 255, 0.2);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: contextMenuIn 180ms ease-out;
+}
+.terminal-search-bar input {
+  width: 180px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.terminal-search-bar input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+.terminal-search-bar input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(127, 0, 255, 0.1);
+}
+.terminal-search-bar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.terminal-search-bar button:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(127, 0, 255, 0.15);
+}
+
+@media (max-width: 640px) {
+  .terminal-search-bar input { width: 120px; }
+}
+
 .prose a { color: var(--accent) !important; }
 .prose code { color: var(--accent-bright) !important; }
 .prose strong { color: var(--text-primary) !important; }

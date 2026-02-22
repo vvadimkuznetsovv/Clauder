@@ -2,13 +2,14 @@ import { useCallback, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
   pointerWithin,
   type DragStartEvent,
   type DragEndEvent,
+  type Modifier,
 } from '@dnd-kit/core';
 import { useAuth } from '../hooks/useAuth';
 import { useLayoutStore, type PanelId } from '../store/layoutStore';
@@ -17,16 +18,32 @@ import { useWorkspaceStore } from '../store/workspaceStore';
 import Sidebar from '../components/layout/Sidebar';
 import LayoutRenderer from '../components/layout/LayoutRenderer';
 import EdgeDropZone from '../components/layout/EdgeDropZone';
-import { panelIcons, panelTitles, getPanelIcon, getPanelTitle } from '../components/layout/PanelContent';
-import type { ChatSession } from '../api/sessions';
-import type { BasePanelId } from '../store/layoutUtils';
+import { panelIcons, getPanelIcon, getPanelTitle } from '../components/layout/PanelContent';
+
+// On touch, snap overlay center to finger — prevents offset jump
+const touchSnapCenter: Modifier = ({ activatorEvent, draggingNodeRect, overlayNodeRect, transform }) => {
+  if (!activatorEvent || !draggingNodeRect) return transform;
+  if (!('touches' in activatorEvent)) return transform;
+
+  const touch = (activatorEvent as TouchEvent).touches[0];
+  if (!touch) return transform;
+
+  const grabOffsetX = touch.clientX - draggingNodeRect.left;
+  const grabOffsetY = touch.clientY - draggingNodeRect.top;
+  const rect = overlayNodeRect ?? draggingNodeRect;
+
+  return {
+    ...transform,
+    x: transform.x + grabOffsetX - rect.width / 2,
+    y: transform.y + grabOffsetY - rect.height / 2,
+  };
+};
 
 export default function Workspace() {
   useAuth();
 
   const {
     layout,
-    visibility,
     mergePanels,
     splitPanel,
     movePanelToEdge,
@@ -39,18 +56,16 @@ export default function Workspace() {
   } = useLayoutStore();
 
   const {
-    activeSession,
     sidebarOpen,
-    setActiveSession,
     setSidebarOpen,
   } = useWorkspaceStore();
 
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   // DnD sensors — unified for all screen sizes
-  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
-  const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 15 } });
-  const sensors = useSensors(pointerSensor, touchSensor);
+  const mouseSensor = useSensor(MouseSensor, { activationConstraint: { distance: 8 } });
+  const touchSensor = useSensor(TouchSensor, { activationConstraint: { distance: 10 } });
+  const sensors = useSensors(mouseSensor, touchSensor);
 
   // DnD handlers
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -111,6 +126,7 @@ export default function Workspace() {
       const filesNode = findPanelNode(layout, 'files');
       if (filesNode && filesNode.id === nodeId) {
         reattachEditor(draggedPanelId);
+        useLayoutStore.getState().setNodeActiveTab(nodeId, 'files');
         return;
       }
     }
@@ -207,9 +223,6 @@ export default function Workspace() {
       {/* === UNIFIED LAYOUT — same on mobile and desktop === */}
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
         <div className="flex flex-col h-full relative z-10 p-2 lg:p-4">
-          {/* Global panel bar — appears when Chat is hidden */}
-          {!visibility.chat && <GlobalPanelBar />}
-
           {/* Edge drop zone — top */}
           <EdgeDropZone edge="top" />
 
@@ -233,8 +246,6 @@ export default function Workspace() {
                 <div className="workspace-glass-panel-shimmer" />
                 <div className="workspace-glass-panel-content">
                   <Sidebar
-                    activeSessionId={activeSession?.id || null}
-                    onSelectSession={setActiveSession as (s: ChatSession | null) => void}
                     isOpen={true}
                     onClose={() => setSidebarOpen(false)}
                   />
@@ -244,7 +255,7 @@ export default function Workspace() {
 
             {/* Main layout area — recursive renderer */}
             <div className="flex-1 min-w-0 h-full">
-              <LayoutRenderer node={layout} />
+              <LayoutRenderer node={layout} isFirst={true} />
             </div>
 
             {/* Edge drop zone — right */}
@@ -258,15 +269,13 @@ export default function Workspace() {
         {/* Mobile sidebar overlay — hidden on desktop where static sidebar is used */}
         <div className="lg:hidden">
           <Sidebar
-            activeSessionId={activeSession?.id || null}
-            onSelectSession={setActiveSession as (s: ChatSession | null) => void}
             isOpen={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
           />
         </div>
 
         {/* DragOverlay */}
-        <DragOverlay>
+        <DragOverlay modifiers={[touchSnapCenter]}>
           {getDragOverlayContent()}
         </DragOverlay>
       </DndContext>
@@ -274,52 +283,3 @@ export default function Workspace() {
   );
 }
 
-// === Global panel bar — shown when Chat (with its toolbar) is hidden ===
-
-function GlobalPanelBar() {
-  const { visibility, toggleVisibility } = useLayoutStore();
-  const { sidebarOpen, setSidebarOpen } = useWorkspaceStore();
-  const allPanels: BasePanelId[] = ['chat', 'files', 'editor', 'preview', 'terminal'];
-
-  return (
-    <div className="global-panel-bar">
-      <button
-        type="button"
-        className="global-panel-bar-sidebar-btn"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        title={sidebarOpen ? 'Hide sessions' : 'Show sessions'}
-        style={{
-          color: sidebarOpen ? 'var(--accent-bright)' : undefined,
-          background: sidebarOpen ? 'rgba(127, 0, 255, 0.15)' : undefined,
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          {sidebarOpen ? (
-            <>
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <line x1="9" y1="3" x2="9" y2="21" />
-            </>
-          ) : (
-            <>
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </>
-          )}
-        </svg>
-      </button>
-      <div className="global-panel-bar-divider" />
-      {allPanels.map((panel) => (
-        <button
-          key={panel}
-          type="button"
-          className={`workspace-toolbar-btn ${visibility[panel] ? 'active' : ''}`}
-          onClick={() => toggleVisibility(panel)}
-        >
-          {panelIcons[panel]}
-          {panelTitles[panel]}
-        </button>
-      ))}
-    </div>
-  );
-}

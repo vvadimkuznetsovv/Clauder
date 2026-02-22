@@ -1,38 +1,52 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import ContextMenu, { type ContextMenuItem } from '../files/ContextMenu';
 import { useLongPress } from '../../hooks/useLongPress';
 import toast from 'react-hot-toast';
 
-// ── Singleton terminal session that survives component remounts ──
+// ── Font size persistence ──
+
+const FONT_SIZE_KEY = 'clauder-terminal-font-size';
+const DEFAULT_FONT_SIZE = 13;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 24;
+
+function getSavedFontSize(): number {
+  const saved = parseInt(localStorage.getItem(FONT_SIZE_KEY) || '', 10);
+  return saved >= MIN_FONT_SIZE && saved <= MAX_FONT_SIZE ? saved : DEFAULT_FONT_SIZE;
+}
+
+// ── Singleton: xterm lives forever, WebSocket is transient ──
 
 interface TermSession {
   xterm: XTerm;
   fitAddon: FitAddon;
-  ws: WebSocket;
-  /** The DOM element xterm is currently attached to */
+  searchAddon: SearchAddon;
   container: HTMLDivElement | null;
 }
 
 let session: TermSession | null = null;
+let currentWs: WebSocket | null = null;
+let reconnectTimer: number | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 5;
+const RECONNECT_DELAY = 800;
 
-function getOrCreateSession(): TermSession {
-  if (session && session.ws.readyState <= WebSocket.OPEN) return session;
+/** Notify React component to re-render (e.g. after reconnect status change) */
+let notifyRerender: (() => void) | null = null;
 
-  // Dispose stale session if any
-  if (session) {
-    session.ws.close();
-    session.xterm.dispose();
-    session = null;
-  }
+function createXterm(): TermSession {
+  const fontSize = getSavedFontSize();
 
   const xterm = new XTerm({
     cursorBlink: true,
     cursorStyle: 'bar',
-    fontSize: 13,
+    fontSize,
+    scrollback: 5000,
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
     theme: {
       background: '#0a0a1a',
@@ -64,15 +78,32 @@ function getOrCreateSession(): TermSession {
   xterm.loadAddon(fitAddon);
   xterm.loadAddon(new WebLinksAddon());
 
+  const searchAddon = new SearchAddon();
+  xterm.loadAddon(searchAddon);
+
+  // Single onData listener — reads currentWs by closure reference
+  xterm.onData((data) => {
+    if (currentWs?.readyState === WebSocket.OPEN) {
+      currentWs.send(new TextEncoder().encode(data));
+    }
+  });
+
+  return { xterm, fitAddon, searchAddon, container: null };
+}
+
+function connectWs(): WebSocket {
   const token = localStorage.getItem('access_token');
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws/terminal?token=${token}`);
   ws.binaryType = 'arraybuffer';
+  currentWs = ws;
 
   ws.onopen = () => {
+    reconnectAttempts = 0;
+    if (!session) return;
     try {
-      fitAddon.fit();
-      const dims = fitAddon.proposeDimensions();
+      session.fitAddon.fit();
+      const dims = session.fitAddon.proposeDimensions();
       if (dims) {
         ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
       }
@@ -80,39 +111,71 @@ function getOrCreateSession(): TermSession {
   };
 
   ws.onmessage = (event) => {
+    if (!session) return;
     if (event.data instanceof ArrayBuffer) {
-      xterm.write(new Uint8Array(event.data));
+      session.xterm.write(new Uint8Array(event.data));
     } else {
-      xterm.write(event.data);
+      session.xterm.write(event.data);
     }
   };
 
   ws.onerror = () => {
-    xterm.write('\r\n\x1b[38;2;248;113;113m[Connection error]\x1b[0m\r\n');
+    session?.xterm.write('\r\n\x1b[38;2;248;113;113m[Connection error]\x1b[0m\r\n');
   };
 
   ws.onclose = () => {
-    xterm.write('\r\n\x1b[38;2;248;113;113m[Terminal disconnected]\x1b[0m\r\n');
-    if (session?.ws === ws) session = null;
+    if (currentWs === ws) currentWs = null;
+    if (!session) return;
+
+    if (reconnectAttempts < MAX_RECONNECT) {
+      reconnectAttempts++;
+      session.xterm.write('\r\n\x1b[38;2;251;191;36m[Shell exited \u2014 reconnecting...]\x1b[0m\r\n');
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connectWs();
+      }, RECONNECT_DELAY);
+    } else {
+      session.xterm.write('\r\n\x1b[38;2;248;113;113m[Disconnected]\x1b[0m\r\n');
+      session.xterm.write('\x1b[38;2;110;180;255m[Right-click \u2192 Reconnect]\x1b[0m\r\n');
+      reconnectAttempts = 0;
+    }
+    notifyRerender?.();
   };
 
-  xterm.onData((data) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(new TextEncoder().encode(data));
-    }
-  });
+  return ws;
+}
 
-  session = { xterm, fitAddon, ws, container: null };
+function forceReconnect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (currentWs) {
+    currentWs.close();
+    currentWs = null;
+  }
+  reconnectAttempts = 0;
+  session?.xterm.write('\r\n\x1b[38;2;110;180;255m[Reconnecting...]\x1b[0m\r\n');
+  connectWs();
+}
+
+function getOrCreateSession(): TermSession {
+  if (!session) {
+    session = createXterm();
+  }
+  if (!currentWs || currentWs.readyState > WebSocket.OPEN) {
+    connectWs();
+  }
   return session;
 }
 
-// ── React component — attaches/detaches the singleton to DOM ──
+// ── React component ──
 
 interface TerminalProps {
   active?: boolean;
 }
 
-// Feather-style SVG icons (14×14)
+// Feather-style SVG icons (14x14)
 const TERM_ICONS = {
   copy: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -129,9 +192,34 @@ const TERM_ICONS = {
       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="M9 12l2 2 4-4" />
     </svg>
   ),
+  search: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  ),
+  zoomIn: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  ),
+  zoomOut: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  ),
   trash: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  ),
+  refresh: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </svg>
+  ),
+  eraser: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 20H7L3 16a1 1 0 0 1 0-1.4l9.6-9.6a2 2 0 0 1 2.8 0l5.2 5.2a2 2 0 0 1 0 2.8L15 18.6" /><path d="M6.5 13.5L12 8" />
     </svg>
   ),
 };
@@ -139,8 +227,17 @@ const TERM_ICONS = {
 export default function TerminalComponent({ active }: TerminalProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [, setTick] = useState(0);
 
-  // Long-press for mobile
+  // Register re-render notifier for reconnect status updates
+  useEffect(() => {
+    notifyRerender = () => setTick((t) => t + 1);
+    return () => { notifyRerender = null; };
+  }, []);
+
+  // Long-press for mobile context menu
   const { handlers: longPressHandlers } = useLongPress({
     onLongPress: (x, y) => setCtxMenu({ x, y }),
   });
@@ -150,8 +247,8 @@ export default function TerminalComponent({ active }: TerminalProps) {
     try {
       session.fitAddon.fit();
       const dims = session.fitAddon.proposeDimensions();
-      if (dims && session.ws.readyState === WebSocket.OPEN) {
-        session.ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
+      if (dims && currentWs?.readyState === WebSocket.OPEN) {
+        currentWs.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
       }
     } catch { /* ignore */ }
   }, []);
@@ -164,9 +261,7 @@ export default function TerminalComponent({ active }: TerminalProps) {
 
     // Attach xterm to this DOM element (re-open if container changed)
     if (s.container !== el) {
-      // xterm.open() can only be called once; on remount we move the DOM node
       if (s.container) {
-        // Move existing xterm DOM into new container
         const xtermEl = s.xterm.element?.parentElement;
         if (xtermEl) {
           el.appendChild(xtermEl);
@@ -177,7 +272,6 @@ export default function TerminalComponent({ active }: TerminalProps) {
       s.container = el;
     }
 
-    // Fit after attach
     setTimeout(fit, 50);
 
     const resizeObserver = new ResizeObserver(() => fit());
@@ -185,13 +279,14 @@ export default function TerminalComponent({ active }: TerminalProps) {
 
     return () => {
       resizeObserver.disconnect();
-      // Do NOT close ws or dispose xterm — keep session alive
     };
   }, [fit]);
 
   useEffect(() => {
     if (active) setTimeout(fit, 50);
   }, [active, fit]);
+
+  // ── Context menu ──
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -215,8 +310,8 @@ export default function TerminalComponent({ active }: TerminalProps) {
       case 'paste':
         navigator.clipboard.readText()
           .then((text) => {
-            if (text && session?.ws.readyState === WebSocket.OPEN) {
-              session.ws.send(new TextEncoder().encode(text));
+            if (text && currentWs?.readyState === WebSocket.OPEN) {
+              currentWs.send(new TextEncoder().encode(text));
             }
           })
           .catch(() => toast.error('Failed to paste'));
@@ -224,20 +319,87 @@ export default function TerminalComponent({ active }: TerminalProps) {
       case 'select-all':
         session.xterm.selectAll();
         break;
+      case 'find':
+        setSearchVisible(true);
+        break;
+      case 'font-increase': {
+        const cur = session.xterm.options.fontSize || DEFAULT_FONT_SIZE;
+        const next = Math.min(cur + 1, MAX_FONT_SIZE);
+        session.xterm.options.fontSize = next;
+        localStorage.setItem(FONT_SIZE_KEY, String(next));
+        fit();
+        break;
+      }
+      case 'font-decrease': {
+        const cur = session.xterm.options.fontSize || DEFAULT_FONT_SIZE;
+        const next = Math.max(cur - 1, MIN_FONT_SIZE);
+        session.xterm.options.fontSize = next;
+        localStorage.setItem(FONT_SIZE_KEY, String(next));
+        fit();
+        break;
+      }
       case 'clear':
+        if (currentWs?.readyState === WebSocket.OPEN) {
+          currentWs.send(new TextEncoder().encode('\x0c'));
+        }
+        break;
+      case 'clear-all':
         session.xterm.clear();
+        if (currentWs?.readyState === WebSocket.OPEN) {
+          currentWs.send(new TextEncoder().encode('\x0c'));
+        }
+        break;
+      case 'reconnect':
+        forceReconnect();
         break;
     }
+  }, [fit]);
+
+  // ── Search ──
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchTerm(val);
+    if (val) session?.searchAddon.findNext(val);
   }, []);
 
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) session?.searchAddon.findPrevious(searchTerm);
+      else session?.searchAddon.findNext(searchTerm);
+    }
+    if (e.key === 'Escape') {
+      setSearchVisible(false);
+      setSearchTerm('');
+      session?.searchAddon.clearDecorations();
+    }
+  }, [searchTerm]);
+
+  const closeSearch = useCallback(() => {
+    setSearchVisible(false);
+    setSearchTerm('');
+    session?.searchAddon.clearDecorations();
+  }, []);
+
+  // ── Build menu items ──
+
   const hasSelection = session?.xterm.hasSelection() ?? false;
+  const isConnected = currentWs?.readyState === WebSocket.OPEN;
 
   const ctxMenuItems: ContextMenuItem[] = [
     { label: 'Copy', action: 'copy', icon: TERM_ICONS.copy, disabled: !hasSelection },
     { label: 'Paste', action: 'paste', icon: TERM_ICONS.clipboard },
     { type: 'separator' },
     { label: 'Select All', action: 'select-all', icon: TERM_ICONS.selectAll },
+    { label: 'Find...', action: 'find', icon: TERM_ICONS.search },
+    { type: 'separator' },
+    { label: 'Font +', action: 'font-increase', icon: TERM_ICONS.zoomIn },
+    { label: 'Font \u2013', action: 'font-decrease', icon: TERM_ICONS.zoomOut },
+    { type: 'separator' },
     { label: 'Clear', action: 'clear', icon: TERM_ICONS.trash },
+    { label: 'Clear Console', action: 'clear-all', icon: TERM_ICONS.eraser, danger: true },
+    { label: 'Reconnect', action: 'reconnect', icon: TERM_ICONS.refresh, disabled: isConnected },
   ];
 
   return (
@@ -245,9 +407,50 @@ export default function TerminalComponent({ active }: TerminalProps) {
       className="h-full relative"
       style={{ background: '#0a0a1a' }}
       onContextMenu={handleContextMenu}
-      {...longPressHandlers}
     >
-      <div ref={termRef} className="h-full" />
+      <div
+        ref={termRef}
+        className="h-full"
+        {...longPressHandlers}
+      />
+
+      {/* Search bar */}
+      {searchVisible && (
+        <div className="terminal-search-bar">
+          <input
+            value={searchTerm}
+            onChange={handleSearchChange}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Find..."
+            autoFocus
+          />
+          <button
+            type="button"
+            title="Previous (Shift+Enter)"
+            onClick={() => session?.searchAddon.findPrevious(searchTerm)}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title="Next (Enter)"
+            onClick={() => session?.searchAddon.findNext(searchTerm)}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <button type="button" title="Close (Escape)" onClick={closeSearch}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Context menu */}
       {ctxMenu && (
         <ContextMenu
           x={ctxMenu.x}

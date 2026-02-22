@@ -25,6 +25,7 @@ func main() {
 	database.Migrate()
 
 	// Ensure workspace directory exists
+	log.Printf("Workspace: %s", cfg.ClaudeWorkingDir)
 	os.MkdirAll(cfg.ClaudeWorkingDir, 0755)
 
 	// Seed admin user
@@ -99,6 +100,11 @@ func main() {
 	// WebSocket routes (auth via query param)
 	r.GET("/ws/chat/:id", chatHandler.HandleWebSocket)
 	r.GET("/ws/terminal", terminalHandler.HandleWebSocket)
+
+	// Code-server reverse proxy (auth via ?token= query param)
+	codeGroup := r.Group("/code")
+	codeGroup.Use(middleware.AuthRequired(cfg.JWTSecret))
+	codeGroup.Any("/*path", handlers.CodeServerProxy())
 
 	// Serve frontend static files
 	r.Static("/assets", "./static/assets")

@@ -12,6 +12,10 @@ export default defineConfig({
         target: 'ws://localhost:8080',
         ws: true,
       },
+      '/code': {
+        target: 'http://localhost:8080',
+        ws: true,
+      },
     },
   },
   build: {

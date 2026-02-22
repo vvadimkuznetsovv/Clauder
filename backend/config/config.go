@@ -63,13 +63,31 @@ func (c *Config) DSN() string {
 		" sslmode=disable TimeZone=UTC"
 }
 
+// findProjectRoot walks up from the executable and current dir
+// looking for the directory that contains .env (project root marker).
+func findProjectRoot() string {
+	var candidates []string
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates, exeDir, filepath.Join(exeDir, ".."))
+	}
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, wd, filepath.Join(wd, ".."))
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(c, ".env")); err == nil {
+			return filepath.Clean(c)
+		}
+	}
+	return ""
+}
+
 func defaultWorkingDir() string {
 	if runtime.GOOS == "windows" {
-		exe, err := os.Executable()
-		if err != nil {
-			return filepath.Join(os.Getenv("USERPROFILE"), "workspace")
+		if root := findProjectRoot(); root != "" {
+			return filepath.Join(root, "workspace")
 		}
-		return filepath.Join(filepath.Dir(exe), "..", "workspace")
+		return filepath.Join(os.Getenv("USERPROFILE"), "workspace")
 	}
 	return "/home/clauder/workspace"
 }

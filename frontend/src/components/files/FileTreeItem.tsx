@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { FileEntry } from '../../api/files';
 import { useLongPress } from '../../hooks/useLongPress';
 
@@ -9,6 +10,7 @@ interface FileTreeItemProps {
   isSelected?: boolean;
   isContextTarget?: boolean;
   onClick: () => void;
+  onDoubleClick?: () => void;
   onContextMenu: (x: number, y: number, file: FileEntry) => void;
   isRenaming?: boolean;
   onRenameSubmit?: (newName: string) => void;
@@ -74,14 +76,19 @@ function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + 'M';
 }
 
+const DOUBLE_TAP_MS = 5000;
+
 export default function FileTreeItem({
   file, depth, isExpanded, isLoading, isSelected, isContextTarget,
-  onClick, onContextMenu, isRenaming, onRenameSubmit, onRenameCancel,
+  onClick, onDoubleClick, onContextMenu, isRenaming, onRenameSubmit, onRenameCancel,
 }: FileTreeItemProps) {
   const { handlers: longPressHandlers, longPressedRef } = useLongPress({
     onLongPress: (x, y) => onContextMenu(x, y, file),
     stopPropagation: true,
   });
+
+  // Mobile double-tap detection: two taps on same file within 5s
+  const lastTapRef = useRef<{ path: string; time: number } | null>(null);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -89,16 +96,32 @@ export default function FileTreeItem({
     onContextMenu(e.clientX, e.clientY, file);
   };
 
+  const handleClick = () => {
+    if (longPressedRef.current) { longPressedRef.current = false; return; }
+
+    // Check for double-tap (mobile) — for files only
+    if (!file.is_dir && onDoubleClick) {
+      const now = Date.now();
+      const last = lastTapRef.current;
+      if (last && last.path === file.path && now - last.time < DOUBLE_TAP_MS) {
+        lastTapRef.current = null;
+        onDoubleClick();
+        return;
+      }
+      lastTapRef.current = { path: file.path, time: now };
+    }
+
+    onClick();
+  };
+
   return (
     <button
       type="button"
-      onClick={isRenaming ? undefined : () => {
-        if (longPressedRef.current) { longPressedRef.current = false; return; }
-        onClick();
-      }}
+      onClick={isRenaming ? undefined : handleClick}
+      onDoubleClick={isRenaming || file.is_dir ? undefined : () => onDoubleClick?.()}
       onContextMenu={handleContextMenu}
       {...longPressHandlers}
-      className={`file-tree-item min-w-full w-max flex items-center gap-1.5 py-1.5 text-sm text-left transition-all duration-150 select-none${isSelected ? ' selected' : ''}${isContextTarget ? ' context-target' : ''}`}
+      className={`file-tree-item w-full flex items-center gap-1.5 py-1.5 text-sm text-left transition-all duration-150 select-none${isSelected ? ' selected' : ''}${isContextTarget ? ' context-target' : ''}`}
       style={{
         paddingLeft: `${12 + depth * 16}px`,
         paddingRight: '12px',

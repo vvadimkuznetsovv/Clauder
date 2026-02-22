@@ -6,7 +6,7 @@ import { useLayoutStore } from '../../store/layoutStore';
 import FileTree from '../files/FileTree';
 import CodeEditor from './CodeEditor';
 import ContextMenu from '../files/ContextMenu';
-import { useLongPress } from '../../hooks/useLongPress';
+import { useLongPress, mergeEventHandlers } from '../../hooks/useLongPress';
 
 function subscribeToMedia(cb: () => void) {
   const mql = window.matchMedia('(max-width: 640px)');
@@ -21,9 +21,11 @@ export default function EditorPanel() {
   const {
     openTabs,
     activeTabId,
+    tempTabId,
     fileTreeVisible,
     activeSession,
     openFile,
+    pinTab,
     openPreviewFile,
     closeTab,
     setActiveTab,
@@ -90,8 +92,10 @@ export default function EditorPanel() {
               key={tab.id}
               tab={tab}
               isActive={tab.id === activeTabId}
+              isTemp={tab.id === tempTabId}
               onSelect={() => { setActiveTab(tab.id); ensureEditorVisible(); }}
               onClose={() => closeTab(tab.id)}
+              onPin={() => pinTab(tab.id)}
             />
           ))}
         </div>
@@ -124,6 +128,15 @@ export default function EditorPanel() {
                   if (!visibility.preview) toggleVisibility('preview');
                 } else {
                   openFile(path, false);
+                  ensureEditorVisible();
+                }
+              }}
+              onFileDoubleClick={(path) => {
+                if (isPreviewableFile(path)) {
+                  openPreviewFile(path);
+                  if (!visibility.preview) toggleVisibility('preview');
+                } else {
+                  openFile(path, true);
                   ensureEditorVisible();
                 }
               }}
@@ -177,13 +190,17 @@ export default function EditorPanel() {
 function EditorTabButton({
   tab,
   isActive,
+  isTemp,
   onSelect,
   onClose,
+  onPin,
 }: {
   tab: EditorTab;
   isActive: boolean;
+  isTemp?: boolean;
   onSelect: () => void;
   onClose: () => void;
+  onPin?: () => void;
 }) {
   const { detachEditorTab } = useLayoutStore();
   const fileName = tab.filePath.split(/[/\\]/).pop() || tab.filePath;
@@ -246,12 +263,13 @@ function EditorTabButton({
     <>
       <div
         ref={setNodeRef}
-        className={`editor-tab ${isActive ? 'active' : ''}`}
+        className={`editor-tab ${isActive ? 'active' : ''}${isTemp ? ' preview' : ''}`}
         style={{ opacity: isDragging ? 0.3 : 1 }}
         onClick={() => {
           if (longPressedRef.current) { longPressedRef.current = false; return; }
           onSelect();
         }}
+        onDoubleClick={() => { if (isTemp) onPin?.(); }}
         onMouseDown={(e) => {
           if (e.button === 1 && isActive) {
             e.preventDefault();
@@ -259,11 +277,10 @@ function EditorTabButton({
           }
         }}
         onContextMenu={handleContextMenu}
-        {...longPressHandlers}
+        {...mergeEventHandlers(longPressHandlers, listeners)}
         title={tab.filePath}
         role="tab"
         aria-selected={isActive}
-        {...listeners}
       >
         <span className="truncate">{fileName}</span>
         {tab.modified && <span className="tab-modified-dot" />}

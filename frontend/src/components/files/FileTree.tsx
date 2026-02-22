@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 interface FileTreeProps {
   rootPath?: string;
   onFileSelect: (path: string) => void;
+  onFileDoubleClick?: (path: string) => void;
   onFileOpenNewTab?: (path: string) => void;
 }
 
@@ -59,7 +60,7 @@ function getMenuItems(target: FileEntry | null): ContextMenuItem[] {
   ];
 }
 
-export default function FileTree({ rootPath, onFileSelect, onFileOpenNewTab }: FileTreeProps) {
+export default function FileTree({ rootPath, onFileSelect, onFileDoubleClick, onFileOpenNewTab }: FileTreeProps) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [currentPath, setCurrentPath] = useState(rootPath || '');
   const [loading, setLoading] = useState(false);
@@ -377,6 +378,7 @@ export default function FileTree({ rootPath, onFileSelect, onFileOpenNewTab }: F
           isSelected={selectedPath === file.path}
           isContextTarget={contextMenu?.target?.path === file.path}
           onClick={() => handleClick(file)}
+          onDoubleClick={!file.is_dir && onFileDoubleClick ? () => onFileDoubleClick(file.path) : undefined}
           onContextMenu={handleItemContextMenu}
           isRenaming={renamingFile?.path === file.path}
           onRenameSubmit={(newName) => handleRename(file, newName)}

@@ -43,6 +43,8 @@ interface WorkspaceState {
   // Tab system
   openTabs: EditorTab[];
   activeTabId: string | null;
+  // Temporary tab (VS Code "preview" mode): only one, replaced on next single-click
+  tempTabId: string | null;
 
   // Detached editors: tabId → file info (editors extracted from File Manager into layout)
   detachedEditors: Record<string, DetachedEditorInfo>;
@@ -67,6 +69,7 @@ interface WorkspaceState {
 
   // Tab actions
   openFile: (filePath: string, inNewTab?: boolean) => void;
+  pinTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
   setTabModified: (tabId: string, modified: boolean) => void;
@@ -99,6 +102,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   activeSession: null,
   openTabs: [],
   activeTabId: null,
+  tempTabId: null,
   detachedEditors: {},
   fileTreeVisible: true,
   previewUrl: null,
@@ -111,43 +115,62 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setActiveSession: (session) => set({ activeSession: session }),
 
   openFile: (filePath, inNewTab = false) => {
-    const { openTabs, activeTabId } = get();
+    const { openTabs, tempTabId } = get();
 
     // Check if file is already open
     const existing = openTabs.find((t) => t.filePath === filePath);
     if (existing) {
-      set({ activeTabId: existing.id });
+      // If double-click on file already in temp tab → pin it
+      if (inNewTab && existing.id === tempTabId) {
+        set({ activeTabId: existing.id, tempTabId: null });
+      } else {
+        set({ activeTabId: existing.id });
+      }
       return;
     }
 
-    if (inNewTab || openTabs.length === 0) {
-      // Open in new tab
+    if (inNewTab) {
+      // Double-click / explicit new tab → permanent tab
       const newTab: EditorTab = { id: generateTabId(), filePath, modified: false };
       set({
         openTabs: [...openTabs, newTab],
         activeTabId: newTab.id,
       });
     } else {
-      // Replace active tab (if not modified), otherwise open new tab
-      const activeTab = openTabs.find((t) => t.id === activeTabId);
-      if (activeTab && !activeTab.modified) {
-        set({
-          openTabs: openTabs.map((t) =>
-            t.id === activeTabId ? { ...t, filePath, modified: false } : t,
-          ),
-        });
-      } else {
-        const newTab: EditorTab = { id: generateTabId(), filePath, modified: false };
-        set({
-          openTabs: [...openTabs, newTab],
-          activeTabId: newTab.id,
-        });
+      // Single-click → use temp tab slot
+      if (tempTabId) {
+        // Replace existing temp tab's filePath
+        const tempTab = openTabs.find((t) => t.id === tempTabId);
+        if (tempTab && !tempTab.modified) {
+          set({
+            openTabs: openTabs.map((t) =>
+              t.id === tempTabId ? { ...t, filePath, modified: false } : t,
+            ),
+            activeTabId: tempTabId,
+          });
+          return;
+        }
+        // Temp tab was modified (auto-pinned) — fall through to create new temp
       }
+      // Create new temp tab
+      const newTab: EditorTab = { id: generateTabId(), filePath, modified: false };
+      set({
+        openTabs: [...openTabs, newTab],
+        activeTabId: newTab.id,
+        tempTabId: newTab.id,
+      });
     }
   },
 
+  pinTab: (tabId) => {
+    set((state) => {
+      if (state.tempTabId === tabId) return { tempTabId: null };
+      return {};
+    });
+  },
+
   closeTab: (tabId) => {
-    const { openTabs, activeTabId } = get();
+    const { openTabs, activeTabId, tempTabId } = get();
     const idx = openTabs.findIndex((t) => t.id === tabId);
     if (idx === -1) return;
 
@@ -164,7 +187,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }
     }
 
-    set({ openTabs: newTabs, activeTabId: newActiveId });
+    const updates: Partial<WorkspaceState> = { openTabs: newTabs, activeTabId: newActiveId };
+    if (tempTabId === tabId) updates.tempTabId = null;
+    set(updates);
   },
 
   setActiveTab: (tabId) => set({ activeTabId: tabId }),
@@ -180,18 +205,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           },
         };
       }
-      return {
+      const updates: Partial<WorkspaceState> = {
         openTabs: state.openTabs.map((t) =>
           t.id === tabId ? { ...t, modified } : t,
         ),
       };
+      // Auto-pin temp tab when user starts editing
+      if (modified && state.tempTabId === tabId) {
+        updates.tempTabId = null;
+      }
+      return updates;
     });
   },
 
   // Detach a tab from File Manager → becomes a standalone panel
   // Returns the tabId for creating the panel, or null if tab not found
   detachTab: (tabId) => {
-    const { openTabs, activeTabId } = get();
+    const { openTabs, activeTabId, tempTabId } = get();
     const tab = openTabs.find((t) => t.id === tabId);
     if (!tab) return null;
 
@@ -206,14 +236,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
 
     // Add to detachedEditors
-    set({
+    const updates: Partial<WorkspaceState> = {
       openTabs: newTabs,
       activeTabId: newActiveId,
       detachedEditors: {
         ...get().detachedEditors,
         [tabId]: { filePath: tab.filePath, modified: tab.modified },
       },
-    });
+    };
+    if (tempTabId === tabId) updates.tempTabId = null;
+    set(updates);
     return tabId;
   },
 

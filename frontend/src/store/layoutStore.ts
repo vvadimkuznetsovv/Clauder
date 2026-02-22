@@ -172,10 +172,10 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       const wasVisible = state.visibility[panelId];
       const newVis = { ...state.visibility, [panelId]: !wasVisible };
 
-      // For detached editors: hiding = close + reattach to FM
+      // For detached editors: hiding = close (remove from layout)
       if (wasVisible && isDetachedEditor(panelId)) {
         const tabId = panelId.slice('editor:'.length);
-        useWorkspaceStore.getState().reattachEditor(tabId);
+        useWorkspaceStore.getState().closeDetachedEditor(tabId);
         // Remove from layout tree
         const newLayout = removePanelFromTree(state.layout, panelId) || state.layout;
         // Clean up visibility key
@@ -185,9 +185,38 @@ export const useLayoutStore = create<LayoutState>((set) => ({
         return { layout: newLayout, visibility: newVis };
       }
 
-      const next = { ...state, visibility: newVis };
+      let newLayout = state.layout;
+
+      if (wasVisible) {
+        // If hiding the currently active tab in a multi-tab node → switch to next visible tab
+        const node = findPanelNode(state.layout, panelId);
+        if (node && node.panelIds.length > 1 && node.panelIds[node.activeIndex] === panelId) {
+          const idx = node.panelIds.indexOf(panelId);
+          let nextActive: PanelId | null = null;
+          // Prefer tab to the right, fallback to left
+          for (let i = idx + 1; i < node.panelIds.length; i++) {
+            if (newVis[node.panelIds[i]] !== false) { nextActive = node.panelIds[i]; break; }
+          }
+          if (!nextActive) {
+            for (let i = idx - 1; i >= 0; i--) {
+              if (newVis[node.panelIds[i]] !== false) { nextActive = node.panelIds[i]; break; }
+            }
+          }
+          if (nextActive) {
+            newLayout = setNodeActiveTab(state.layout, node.id, nextActive);
+          }
+        }
+      } else {
+        // If showing a panel → make it the active tab in its node
+        const node = findPanelNode(state.layout, panelId);
+        if (node && node.panelIds.length > 1) {
+          newLayout = setNodeActiveTab(state.layout, node.id, panelId);
+        }
+      }
+
+      const next = { ...state, layout: newLayout, visibility: newVis };
       saveToStorage(next);
-      return { visibility: newVis };
+      return { layout: newLayout, visibility: newVis };
     });
   },
 

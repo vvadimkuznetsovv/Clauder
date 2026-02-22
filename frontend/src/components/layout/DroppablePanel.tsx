@@ -1,14 +1,87 @@
+import { useState, useCallback } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { PanelId, PanelNode } from '../../store/layoutStore';
 import { useLayoutStore } from '../../store/layoutStore';
-import { isDetachedEditor } from '../../store/layoutUtils';
+import { isDetachedEditor, getDetachedTabId } from '../../store/layoutUtils';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import PanelContent, { getPanelIcon, getPanelTitle } from './PanelContent';
+import ContextMenu from '../files/ContextMenu';
+import { useLongPress, mergeEventHandlers } from '../../hooks/useLongPress';
 
 interface DroppablePanelProps {
   node: PanelNode;
+  isFirst?: boolean;
 }
 
-export default function DroppablePanel({ node }: DroppablePanelProps) {
+// Feather-style SVG icons for context menu
+const ICONS = {
+  eyeOff: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  ),
+  cornerDownLeft: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 10 4 15 9 20" />
+      <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+    </svg>
+  ),
+  splitPanel: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7" />
+      <path d="M3 3h7v18H3a0 0 0 0 1 0 0V3z" />
+    </svg>
+  ),
+  x: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  ),
+  rotateCcw: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  ),
+};
+
+// --- Sidebar toggle button — shown in the first panel's tab bar ---
+function SidebarToggleBtn() {
+  const { sidebarOpen, setSidebarOpen } = useWorkspaceStore();
+  return (
+    <button
+      type="button"
+      className="global-panel-bar-sidebar-btn"
+      onClick={() => setSidebarOpen(!sidebarOpen)}
+      title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+      style={{
+        color: sidebarOpen ? 'var(--accent-bright)' : undefined,
+        background: sidebarOpen ? 'rgba(127, 0, 255, 0.15)' : undefined,
+        flexShrink: 0,
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        {sidebarOpen ? (
+          <>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </>
+        ) : (
+          <>
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
+export default function DroppablePanel({ node, isFirst = false }: DroppablePanelProps) {
   const { dnd, visibility } = useLayoutStore();
 
   const activePanelId = node.panelIds[node.activeIndex];
@@ -43,9 +116,9 @@ export default function DroppablePanel({ node }: DroppablePanelProps) {
         <div className="workspace-glass-panel-shimmer" />
         <div className="workspace-glass-panel-content flex flex-col h-full">
           {isMultiTab ? (
-            <TabBar node={node} visiblePanelIds={visiblePanelIds} />
+            <TabBar node={node} visiblePanelIds={visiblePanelIds} showSidebarBtn={isFirst} />
           ) : (
-            <DragHeader panelId={visiblePanelIds[0] || activePanelId} />
+            <DragHeader panelId={visiblePanelIds[0] || activePanelId} nodeId={node.id} showSidebarBtn={isFirst} />
           )}
 
           <div className="flex-1 overflow-hidden">
@@ -60,6 +133,74 @@ export default function DroppablePanel({ node }: DroppablePanelProps) {
       )}
     </div>
   );
+}
+
+// --- Context menu items builder ---
+function getPanelMenuItems(panelId: PanelId, isMultiTab: boolean) {
+  const isDetached = isDetachedEditor(panelId);
+  const title = getPanelTitle(panelId);
+
+  if (isDetached) {
+    return [
+      { label: 'Return to File Manager', action: 'reattach', icon: ICONS.cornerDownLeft },
+      { type: 'separator' as const },
+      { label: 'Close Tab', action: 'close-detached', icon: ICONS.x },
+      { type: 'separator' as const },
+      { label: 'Reset Layout', action: 'reset-layout', icon: ICONS.rotateCcw },
+    ];
+  }
+
+  const items: { label?: string; action?: string; icon?: React.ReactNode; type?: 'separator' }[] = [];
+
+  // "Open in Separate Panel" — only when this panel shares a tab group with others
+  if (isMultiTab) {
+    items.push({ label: 'Open in Separate Panel', action: 'split-out', icon: ICONS.splitPanel });
+    items.push({ type: 'separator' as const });
+  }
+
+  items.push({ label: `Hide ${title}`, action: 'hide', icon: ICONS.eyeOff });
+  items.push({ type: 'separator' as const });
+  items.push({ label: 'Reset Layout', action: 'reset-layout', icon: ICONS.rotateCcw });
+
+  return items;
+}
+
+function handlePanelMenuAction(
+  action: string,
+  panelId: PanelId,
+  nodeId: string,
+  fns: {
+    toggleVisibility: (id: PanelId) => void;
+    removeDetachedPanel: (id: PanelId) => void;
+    reattachEditor: (id: PanelId) => void;
+    splitPanel: (panelId: PanelId, targetNodeId: string, direction: 'top' | 'bottom' | 'left' | 'right') => void;
+    resetLayout: () => void;
+  },
+) {
+  switch (action) {
+    case 'hide':
+      fns.toggleVisibility(panelId);
+      break;
+    case 'split-out':
+      fns.splitPanel(panelId, nodeId, 'right');
+      break;
+    case 'reattach':
+      fns.reattachEditor(panelId);
+      break;
+    case 'close-detached': {
+      const tabId = getDetachedTabId(panelId);
+      if (tabId) {
+        const info = useWorkspaceStore.getState().detachedEditors[tabId];
+        if (info?.modified && !window.confirm('File has unsaved changes. Close anyway?')) return;
+        useWorkspaceStore.getState().closeDetachedEditor(tabId);
+      }
+      fns.removeDetachedPanel(panelId);
+      break;
+    }
+    case 'reset-layout':
+      fns.resetLayout();
+      break;
+  }
 }
 
 // --- 5 directional drop zones (top/bottom/left/right/center) ---
@@ -85,66 +226,111 @@ function DropZone({ id, position }: { id: string; position: string }) {
   );
 }
 
-// --- Single panel: drag header (same for ALL panels including Chat) ---
-function DragHeader({ panelId }: { panelId: PanelId }) {
-  const { toggleVisibility, reattachEditor } = useLayoutStore();
+// --- Single panel: drag header ---
+function DragHeader({ panelId, nodeId, showSidebarBtn }: { panelId: PanelId; nodeId: string; showSidebarBtn?: boolean }) {
+  const { toggleVisibility, removeDetachedPanel, reattachEditor, splitPanel, resetLayout } = useLayoutStore();
   const { attributes, listeners, setNodeRef } = useDraggable({ id: panelId });
 
   const title = getPanelTitle(panelId);
   const handleClose = () => {
     if (isDetachedEditor(panelId)) {
-      reattachEditor(panelId);
+      const tabId = getDetachedTabId(panelId);
+      if (tabId) {
+        const info = useWorkspaceStore.getState().detachedEditors[tabId];
+        if (info?.modified && !window.confirm('File has unsaved changes. Close anyway?')) return;
+        useWorkspaceStore.getState().closeDetachedEditor(tabId);
+      }
+      removeDetachedPanel(panelId);
     } else {
       toggleVisibility(panelId);
     }
   };
 
+  // Context menu
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const { handlers: longPressHandlers, longPressedRef } = useLongPress({
+    onLongPress: (x, y) => setCtxMenu({ x, y }),
+  });
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleCtxAction = useCallback((action: string) => {
+    setCtxMenu(null);
+    handlePanelMenuAction(action, panelId, nodeId, { toggleVisibility, removeDetachedPanel, reattachEditor, splitPanel, resetLayout });
+  }, [panelId, nodeId, toggleVisibility, removeDetachedPanel, reattachEditor, splitPanel, resetLayout]);
+
+  // Merge touch handlers: long-press fires first, then dnd-kit listeners
+  const mergedHandlers = mergeEventHandlers(longPressHandlers, listeners);
+
   return (
-    <div
-      ref={setNodeRef}
-      className="panel-drag-header"
-      {...listeners}
-      {...attributes}
-    >
-      <div className="drag-grip">
-        <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" opacity="0.3">
-          <circle cx="2" cy="2" r="1.2" />
-          <circle cx="8" cy="2" r="1.2" />
-          <circle cx="2" cy="8" r="1.2" />
-          <circle cx="8" cy="8" r="1.2" />
-          <circle cx="2" cy="14" r="1.2" />
-          <circle cx="8" cy="14" r="1.2" />
-        </svg>
-      </div>
-      <span className="panel-drag-icon">{getPanelIcon(panelId)}</span>
-      <span className="panel-drag-title">{title}</span>
-      <button
-        type="button"
-        className="panel-close-btn"
-        onClick={(e) => { e.stopPropagation(); handleClose(); }}
-        title={isDetachedEditor(panelId) ? `Return ${title} to File Manager` : `Hide ${title}`}
+    <>
+      <div
+        ref={setNodeRef}
+        className="panel-drag-header"
+        onContextMenu={handleContextMenu}
+        {...mergedHandlers}
+        {...attributes}
+        onClick={() => {
+          if (longPressedRef.current) { longPressedRef.current = false; return; }
+        }}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
-    </div>
+        {showSidebarBtn && <SidebarToggleBtn />}
+        <div className="drag-grip">
+          <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" opacity="0.3">
+            <circle cx="2" cy="2" r="1.2" />
+            <circle cx="8" cy="2" r="1.2" />
+            <circle cx="2" cy="8" r="1.2" />
+            <circle cx="8" cy="8" r="1.2" />
+            <circle cx="2" cy="14" r="1.2" />
+            <circle cx="8" cy="14" r="1.2" />
+          </svg>
+        </div>
+        <span className="panel-drag-icon">{getPanelIcon(panelId)}</span>
+        <span className="panel-drag-title">{title}</span>
+        <button
+          type="button"
+          className="panel-close-btn"
+          onClick={(e) => { e.stopPropagation(); handleClose(); }}
+          title={isDetachedEditor(panelId) ? `Close ${title}` : `Hide ${title}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={getPanelMenuItems(panelId, false)}
+          onAction={handleCtxAction}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+    </>
   );
 }
 
 // --- Multi panel: tab bar with draggable tabs ---
-function TabBar({ node, visiblePanelIds }: { node: PanelNode; visiblePanelIds: PanelId[] }) {
+function TabBar({ node, visiblePanelIds, showSidebarBtn }: { node: PanelNode; visiblePanelIds: PanelId[]; showSidebarBtn?: boolean }) {
   const { setNodeActiveTab } = useLayoutStore();
 
   return (
     <div className="panel-tab-bar">
+      {showSidebarBtn && <SidebarToggleBtn />}
       {visiblePanelIds.map((pid) => (
         <DraggableTab
           key={pid}
           panelId={pid}
           isActive={pid === node.panelIds[node.activeIndex]}
           onActivate={() => setNodeActiveTab(node.id, pid)}
+          nodeId={node.id}
         />
       ))}
     </div>
@@ -155,45 +341,89 @@ function DraggableTab({
   panelId,
   isActive,
   onActivate,
+  nodeId,
 }: {
   panelId: PanelId;
   isActive: boolean;
   onActivate: () => void;
+  nodeId: string;
 }) {
-  const { toggleVisibility, reattachEditor } = useLayoutStore();
+  const { toggleVisibility, removeDetachedPanel, reattachEditor, splitPanel, resetLayout } = useLayoutStore();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: panelId });
 
   const title = getPanelTitle(panelId);
   const handleClose = () => {
     if (isDetachedEditor(panelId)) {
-      reattachEditor(panelId);
+      const tabId = getDetachedTabId(panelId);
+      if (tabId) {
+        const info = useWorkspaceStore.getState().detachedEditors[tabId];
+        if (info?.modified && !window.confirm('File has unsaved changes. Close anyway?')) return;
+        useWorkspaceStore.getState().closeDetachedEditor(tabId);
+      }
+      removeDetachedPanel(panelId);
     } else {
       toggleVisibility(panelId);
     }
   };
 
+  // Context menu
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const { handlers: longPressHandlers, longPressedRef } = useLongPress({
+    onLongPress: (x, y) => setCtxMenu({ x, y }),
+  });
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleCtxAction = useCallback((action: string) => {
+    setCtxMenu(null);
+    handlePanelMenuAction(action, panelId, nodeId, { toggleVisibility, removeDetachedPanel, reattachEditor, splitPanel, resetLayout });
+  }, [panelId, nodeId, toggleVisibility, removeDetachedPanel, reattachEditor, splitPanel, resetLayout]);
+
+  // Merge touch handlers: long-press fires first, then dnd-kit listeners
+  const mergedHandlers = mergeEventHandlers(longPressHandlers, listeners);
+
   return (
-    <div
-      ref={setNodeRef}
-      className={`panel-tab ${isActive ? 'active' : ''}`}
-      style={{ opacity: isDragging ? 0.3 : 1 }}
-      onClick={onActivate}
-      {...listeners}
-      {...attributes}
-    >
-      <span className="panel-tab-icon">{getPanelIcon(panelId)}</span>
-      <span className="panel-tab-title">{title}</span>
-      <button
-        type="button"
-        className={`panel-tab-close${isActive ? '' : ' panel-tab-close-compact'}`}
-        onClick={(e) => { e.stopPropagation(); handleClose(); }}
-        title={isDetachedEditor(panelId) ? `Return ${title} to File Manager` : `Hide ${title}`}
+    <>
+      <div
+        ref={setNodeRef}
+        className={`panel-tab ${isActive ? 'active' : ''}`}
+        style={{ opacity: isDragging ? 0.3 : 1 }}
+        onClick={() => {
+          if (longPressedRef.current) { longPressedRef.current = false; return; }
+          onActivate();
+        }}
+        onContextMenu={handleContextMenu}
+        {...mergedHandlers}
+        {...attributes}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
-    </div>
+        <span className="panel-tab-icon">{getPanelIcon(panelId)}</span>
+        <span className="panel-tab-title">{title}</span>
+        <button
+          type="button"
+          className={`panel-tab-close${isActive ? '' : ' panel-tab-close-compact'}`}
+          onClick={(e) => { e.stopPropagation(); handleClose(); }}
+          title={isDetachedEditor(panelId) ? `Close ${title}` : `Hide ${title}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={getPanelMenuItems(panelId, true)}
+          onAction={handleCtxAction}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+    </>
   );
 }
