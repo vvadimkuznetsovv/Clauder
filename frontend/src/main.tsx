@@ -4,6 +4,10 @@ import { Toaster } from 'react-hot-toast'
 import './index.css'
 import App from './App'
 
+// ── DEBUG: eruda mobile console (remove after debugging) ──
+import eruda from 'eruda'
+eruda.init()
+
 // ── DEBUG: catch page unloads to find reload cause ──
 window.addEventListener('beforeunload', () => {
   console.error('[PAGE] beforeunload fired — page is about to reload!', new Error().stack);
