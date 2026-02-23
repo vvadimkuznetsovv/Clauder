@@ -9,14 +9,17 @@ export function useAuth() {
 
   useEffect(() => {
     const hasToken = loadFromStorage();
+    console.log('[useAuth] loadFromStorage hasToken=', hasToken, 'user=', !!user);
     if (hasToken && !user) {
       getMe()
         .then(({ data }) => {
+          console.log('[useAuth] getMe OK:', data.username);
           const token = localStorage.getItem('access_token')!;
           const refresh = localStorage.getItem('refresh_token')!;
           setAuth(data, token, refresh);
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error('[useAuth] getMe FAILED — navigating to /login', err);
           clearAuth();
           navigate('/login');
         });

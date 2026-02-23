@@ -15,6 +15,7 @@ let iframeWrapper: HTMLDivElement | null = null;
 let iframeEl: HTMLIFrameElement | null = null;
 function ensureIframe(token: string): void {
   if (iframeWrapper) return; // already created
+  console.log('[ChatPanel] Creating singleton iframe');
 
   iframeWrapper = document.createElement('div');
   iframeWrapper.style.cssText =
@@ -75,8 +76,10 @@ export default function ChatPanel(_props: ChatPanelProps) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
 
+    console.log('[ChatPanel] Probing /code/ ...');
     fetch(`/code/?token=${token}`, { method: 'HEAD', signal: controller.signal })
       .then(res => {
+        console.log('[ChatPanel] Probe response:', res.status, res.ok);
         if (res.ok) {
           ensureIframe(token);
           setProbe({ token, result: 'ok' });
@@ -84,7 +87,7 @@ export default function ChatPanel(_props: ChatPanelProps) {
           setProbe({ token, result: 'failed' });
         }
       })
-      .catch(() => { setProbe({ token, result: 'failed' }); })
+      .catch((err) => { console.warn('[ChatPanel] Probe failed:', err); setProbe({ token, result: 'failed' }); })
       .finally(() => clearTimeout(timer));
 
     return () => { controller.abort(); clearTimeout(timer); };

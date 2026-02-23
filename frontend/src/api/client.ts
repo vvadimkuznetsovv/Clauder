@@ -23,6 +23,7 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest) {
       originalRequest._retry = true;
+      console.warn('[AUTH] 401 received for', originalRequest.url, '— attempting token refresh');
 
       const refreshToken = localStorage.getItem('refresh_token');
       if (refreshToken) {
@@ -30,17 +31,20 @@ api.interceptors.response.use(
           const { data } = await axios.post('/api/auth/refresh', {
             refresh_token: refreshToken,
           });
+          console.log('[AUTH] Token refresh SUCCESS');
           localStorage.setItem('access_token', data.access_token);
           localStorage.setItem('refresh_token', data.refresh_token);
           useAuthStore.getState().loadFromStorage(); // keep Zustand store in sync
           originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
           return api(originalRequest);
-        } catch {
+        } catch (refreshErr) {
+          console.error('[AUTH] Token refresh FAILED — redirecting to /login', refreshErr);
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           window.location.href = '/login';
         }
       } else {
+        console.error('[AUTH] No refresh_token — redirecting to /login');
         window.location.href = '/login';
       }
     }
