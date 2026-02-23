@@ -87,7 +87,14 @@ export default function ChatPanel(_props: ChatPanelProps) {
           setProbe({ token, result: 'failed' });
         }
       })
-      .catch((err) => { console.warn('[ChatPanel] Probe failed:', err); setProbe({ token, result: 'failed' }); })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.log('[ChatPanel] Probe aborted (cleanup) — ignoring');
+          return;
+        }
+        console.warn('[ChatPanel] Probe failed:', err);
+        setProbe({ token, result: 'failed' });
+      })
       .finally(() => clearTimeout(timer));
 
     return () => { controller.abort(); clearTimeout(timer); };

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { ensureFreshToken } from '../api/tokenRefresh';
 
 interface UseWebSocketOptions {
   url: string;
@@ -20,10 +21,10 @@ export function useWebSocket({
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const token = localStorage.getItem('access_token');
+    const token = await ensureFreshToken();
     const separator = url.includes('?') ? '&' : '?';
     const wsUrl = `${url}${separator}token=${token}`;
 

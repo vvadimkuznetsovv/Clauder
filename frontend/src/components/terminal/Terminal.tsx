@@ -6,6 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import ContextMenu, { type ContextMenuItem } from '../files/ContextMenu';
 import { useLongPress } from '../../hooks/useLongPress';
+import { ensureFreshToken } from '../../api/tokenRefresh';
 import toast from 'react-hot-toast';
 
 // ── Font size persistence ──
@@ -120,11 +121,11 @@ function createXterm(instanceId: string): TermSession {
   return session;
 }
 
-function connectWs(instanceId: string): void {
+async function connectWs(instanceId: string): Promise<void> {
   const session = sessions.get(instanceId);
   if (!session) return;
 
-  const token = localStorage.getItem('access_token');
+  const token = await ensureFreshToken();
   if (!token) {
     console.warn(`[Terminal] connectWs SKIP — no access_token id=${instanceId}`);
     return;
