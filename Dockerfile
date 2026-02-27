@@ -11,7 +11,7 @@ RUN npm install -g @anthropic-ai/claude-code
 WORKDIR /app
 
 # Copy pre-built Go binary
-COPY backend/clauder .
+COPY backend/nebulide .
 
 # Copy pre-built frontend
 COPY frontend/dist ./static
@@ -24,13 +24,13 @@ RUN chmod +x /entrypoint.sh
 COPY scripts/apk-persist /usr/local/bin/apk-persist
 RUN chmod +x /usr/local/bin/apk-persist
 
-# Create user clauder with sudo access
-RUN adduser -D -s /bin/bash -h /home/clauder clauder \
-    && echo "clauder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+# Create user nebulide with sudo access
+RUN adduser -D -s /bin/bash -h /home/nebulide nebulide \
+    && echo "nebulide ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # Create workspace directory and set ownership
-RUN mkdir -p /home/clauder/workspace \
-    && chown -R clauder:clauder /home/clauder
+RUN mkdir -p /home/nebulide/workspace \
+    && chown -R nebulide:nebulide /home/nebulide
 
 # Claude Code instructions (entrypoint copies to workspace on first run)
 COPY workspace-CLAUDE.md /app/CLAUDE.md
@@ -38,4 +38,4 @@ COPY workspace-CLAUDE.md /app/CLAUDE.md
 EXPOSE 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["./clauder"]
+CMD ["./nebulide"]

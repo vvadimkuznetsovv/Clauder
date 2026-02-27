@@ -1,7 +1,7 @@
 # Go
 backend/tmp/
-backend/clauder
-backend/clauder.exe
+backend/nebulide
+backend/nebulide.exe
 
 # Frontend
 frontend/node_modules/

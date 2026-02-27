@@ -6,9 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"clauder/config"
-	"clauder/database"
-	"clauder/models"
+	"nebulide/config"
+	"nebulide/database"
+	"nebulide/models"
 )
 
 type SessionsHandler struct {

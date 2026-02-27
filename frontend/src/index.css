@@ -553,7 +553,7 @@
      ========================================== */
 
   /* Lava blob logo icon — pulsing neon glow */
-  .clauder-logo-icon {
+  .nebulide-logo-icon {
     flex-shrink: 0;
     filter: drop-shadow(0 0 5px rgba(127,0,255,0.65)) drop-shadow(0 0 2px rgba(166,77,255,0.85));
     animation: iconPulse 3s ease-in-out infinite;

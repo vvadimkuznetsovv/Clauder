@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"clauder/config"
+	"nebulide/config"
 )
 
 var DB *gorm.DB

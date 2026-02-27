@@ -11,11 +11,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"clauder/config"
-	"clauder/database"
-	"clauder/models"
-	"clauder/services"
-	"clauder/utils"
+	"nebulide/config"
+	"nebulide/database"
+	"nebulide/models"
+	"nebulide/services"
+	"nebulide/utils"
 )
 
 var chatUpgrader = websocket.Upgrader{

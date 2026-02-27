@@ -12,11 +12,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"clauder/config"
-	"clauder/database"
-	"clauder/middleware"
-	"clauder/models"
-	"clauder/utils"
+	"nebulide/config"
+	"nebulide/database"
+	"nebulide/middleware"
+	"nebulide/models"
+	"nebulide/utils"
 )
 
 var dbCounter atomic.Int64
@@ -65,7 +65,7 @@ func TestConfig() *config.Config {
 		JWTExpiry:          15 * time.Minute,
 		JWTRefreshExpiry:   168 * time.Hour,
 		ClaudeAllowedTools: "Read,Write",
-		ClaudeWorkingDir:   "/tmp/clauder-test",
+		ClaudeWorkingDir:   "/tmp/nebulide-test",
 		AdminUsername:      "admin",
 		AdminPassword:      "admin123",
 	}

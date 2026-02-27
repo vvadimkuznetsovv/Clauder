@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"clauder/config"
+	"nebulide/config"
 )
 
 type FilesHandler struct {

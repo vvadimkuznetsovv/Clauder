@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"clauder/utils"
+	"nebulide/utils"
 )
 
 // CodeServerAuthMiddleware authenticates requests for the /code/* proxy.
@@ -40,7 +40,7 @@ func CodeServerAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 
 		// 3. HttpOnly cookie — used by code-server's internal requests
 		if tokenString == "" {
-			if cookie, err := c.Cookie("clauder-code-auth"); err == nil {
+			if cookie, err := c.Cookie("nebulide-code-auth"); err == nil {
 				tokenString = cookie
 			}
 		}
@@ -54,7 +54,7 @@ func CodeServerAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		claims, err := utils.ParseToken(jwtSecret, tokenString)
 		if err != nil || claims.Partial {
 			// Clear stale cookie
-			c.SetCookie("clauder-code-auth", "", -1, "/code", "", false, true)
+			c.SetCookie("nebulide-code-auth", "", -1, "/code", "", false, true)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
@@ -65,7 +65,7 @@ func CodeServerAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		if setCookie {
 			longLived, err := utils.GenerateAccessToken(jwtSecret, claims.UserID, claims.Username, false, 7*24*time.Hour)
 			if err == nil {
-				c.SetCookie("clauder-code-auth", longLived, 7*24*60*60, "/code", "", false, true)
+				c.SetCookie("nebulide-code-auth", longLived, 7*24*60*60, "/code", "", false, true)
 			}
 		}
 
@@ -104,7 +104,7 @@ func CodeServerProxy() gin.HandlerFunc {
 		Director: func(req *http.Request) {
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
-			// Do NOT override req.Host — keep the original "clauder.smartrs.tech"
+			// Do NOT override req.Host — keep the original "nebulide.ru"
 			// so that code-server's Origin/Host check passes (auth: none still
 			// validates Host vs Origin to prevent DNS rebinding attacks).
 
@@ -196,7 +196,7 @@ func proxyWebSocket(c *gin.Context, targetHost, path, rawQuery string) {
 	defer backendConn.Close()
 
 	// Rewrite and forward the WebSocket upgrade request to code-server.
-	// Keep the original Host header (clauder.smartrs.tech) so that code-server's
+	// Keep the original Host header (nebulide.ru) so that code-server's
 	// DNS-rebinding check (Host vs Origin match) passes even with auth: none.
 	req := c.Request.Clone(c.Request.Context())
 	req.URL = &url.URL{Path: path, RawQuery: rawQuery}

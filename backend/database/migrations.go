@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"clauder/models"
+	"nebulide/models"
 )
 
 func Migrate() {

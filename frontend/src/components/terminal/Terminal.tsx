@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 
 // ── Font size persistence ──
 
-const FONT_SIZE_KEY = 'clauder-terminal-font-size';
+const FONT_SIZE_KEY = 'nebulide-terminal-font-size';
 const DEFAULT_FONT_SIZE = 13;
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
@@ -43,10 +43,10 @@ const RECONNECT_DELAY = 800;
 
 /** Unique ID per browser tab — so two tabs/devices get separate PTY sessions */
 function getTabSessionId(): string {
-  let id = sessionStorage.getItem('clauder-tab-id');
+  let id = sessionStorage.getItem('nebulide-tab-id');
   if (!id) {
     id = Math.random().toString(36).slice(2, 10);
-    sessionStorage.setItem('clauder-tab-id', id);
+    sessionStorage.setItem('nebulide-tab-id', id);
   }
   return id;
 }

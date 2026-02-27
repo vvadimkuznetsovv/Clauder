@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"clauder/middleware"
-	"clauder/models"
-	"clauder/testutil"
+	"nebulide/middleware"
+	"nebulide/models"
+	"nebulide/testutil"
 )
 
 func setupSessionsTestRouter() (*gin.Engine, *testutil.TestContext) {

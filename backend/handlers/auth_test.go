@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"clauder/middleware"
-	"clauder/models"
-	"clauder/services"
-	"clauder/testutil"
-	"clauder/utils"
+	"nebulide/middleware"
+	"nebulide/models"
+	"nebulide/services"
+	"nebulide/testutil"
+	"nebulide/utils"
 )
 
 func setupAuthTestRouter() (*gin.Engine, *testutil.TestContext) {

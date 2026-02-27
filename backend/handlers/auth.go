@@ -8,11 +8,11 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"clauder/config"
-	"clauder/database"
-	"clauder/models"
-	"clauder/services"
-	"clauder/utils"
+	"nebulide/config"
+	"nebulide/database"
+	"nebulide/models"
+	"nebulide/services"
+	"nebulide/utils"
 )
 
 type AuthHandler struct {

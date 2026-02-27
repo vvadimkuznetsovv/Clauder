@@ -21,14 +21,14 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-clauder}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-clauder}
-      POSTGRES_DB: ${DB_NAME:-clauder}
+      POSTGRES_USER: ${DB_USER:-nebulide}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-nebulide}
+      POSTGRES_DB: ${DB_NAME:-nebulide}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   app:
-    image: clauder:latest
+    image: nebulide:latest
     build: .
     restart: unless-stopped
     depends_on:
@@ -38,10 +38,10 @@ services:
     environment:
       DB_HOST: postgres
     volumes:
-      - /home/clauder/workspace:/home/clauder/workspace
-      - /tmp/clauder:/tmp
-      - /home/clauder/.gitconfig:/root/.gitconfig:ro
-      - /home/clauder/.ssh:/root/.ssh:ro
+      - /home/nebulide/workspace:/home/nebulide/workspace
+      - /tmp/nebulide:/tmp
+      - /home/nebulide/.gitconfig:/root/.gitconfig:ro
+      - /home/nebulide/.ssh:/root/.ssh-mount:ro
       - usr_local:/usr/local
 
   code-server:
@@ -57,7 +57,7 @@ services:
       - DEFAULT_WORKSPACE=/config/workspace
     volumes:
       - code-server-config:/config
-      - /home/clauder/workspace:/config/workspace
+      - /home/nebulide/workspace:/config/workspace
 
 volumes:
   postgres_data:

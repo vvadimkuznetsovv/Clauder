@@ -7,7 +7,7 @@ import (
 
 func GenerateTOTPSecret(username string) (*otp.Key, error) {
 	return totp.Generate(totp.GenerateOpts{
-		Issuer:      "Clauder",
+		Issuer:      "Nebulide",
 		AccountName: username,
 	})
 }

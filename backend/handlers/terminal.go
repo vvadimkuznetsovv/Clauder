@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
-	"clauder/config"
-	"clauder/services"
-	"clauder/utils"
+	"nebulide/config"
+	"nebulide/services"
+	"nebulide/utils"
 )
 
 var termUpgrader = websocket.Upgrader{

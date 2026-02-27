@@ -18,7 +18,7 @@ export default function Landing() {
         </div>
 
         <h1 className="text-5xl font-bold tracking-tight mb-3" style={{ color: 'var(--text-primary)' }}>
-          Clauder
+          Nebulide
         </h1>
         <p className="text-lg mb-2" style={{ color: 'var(--text-primary)' }}>
           Claude Code in your browser
@@ -66,7 +66,7 @@ export default function Landing() {
         </div>
 
         <p className="mt-14 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          Want your own Clauder instance?{' '}
+          Want your own Nebulide instance?{' '}
           <a href="#" className="hover:underline" style={{ color: 'var(--accent)' }}>
             Get in touch
           </a>

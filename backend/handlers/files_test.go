@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"clauder/middleware"
-	"clauder/models"
-	"clauder/testutil"
+	"nebulide/middleware"
+	"nebulide/models"
+	"nebulide/testutil"
 )
 
 type filesTestEnv struct {
@@ -28,7 +28,7 @@ type filesTestEnv struct {
 func setupFilesTest(t *testing.T) *filesTestEnv {
 	t.Helper()
 
-	workDir, err := os.MkdirTemp("", "clauder-test-files-*")
+	workDir, err := os.MkdirTemp("", "nebulide-test-files-*")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(workDir) })
 

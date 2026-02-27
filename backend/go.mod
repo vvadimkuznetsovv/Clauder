@@ -1,4 +1,4 @@
-module clauder
+module nebulide
 
 go 1.24.2
 

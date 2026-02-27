@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"clauder/utils"
+	"nebulide/utils"
 )
 
 func AuthRequired(jwtSecret string) gin.HandlerFunc {

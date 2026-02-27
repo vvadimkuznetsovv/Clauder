@@ -82,7 +82,7 @@ interface LayoutState {
   closeMobilePanel: (panel: PanelId) => void;
 }
 
-const STORAGE_KEY = 'clauder-layout-v6';
+const STORAGE_KEY = 'nebulide-layout-v6';
 
 function loadFromStorage(): { layout?: LayoutNode; visibility?: PanelVisibility; mobilePanels?: PanelId[] } {
   try {

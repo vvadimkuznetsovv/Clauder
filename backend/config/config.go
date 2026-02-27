@@ -38,9 +38,9 @@ func Load() *Config {
 
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "clauder"),
-		DBPassword: getEnv("DB_PASSWORD", "clauder"),
-		DBName:     getEnv("DB_NAME", "clauder"),
+		DBUser:     getEnv("DB_USER", "nebulide"),
+		DBPassword: getEnv("DB_PASSWORD", "nebulide"),
+		DBName:     getEnv("DB_NAME", "nebulide"),
 
 		JWTSecret:        getEnv("JWT_SECRET", "dev-secret-change-in-production"),
 		JWTExpiry:        parseDuration(getEnv("JWT_EXPIRY", "15m")),
@@ -89,7 +89,7 @@ func defaultWorkingDir() string {
 		}
 		return filepath.Join(os.Getenv("USERPROFILE"), "workspace")
 	}
-	return "/home/clauder/workspace"
+	return "/home/nebulide/workspace"
 }
 
 func getEnv(key, fallback string) string {

@@ -53,7 +53,7 @@ describe('Login', () => {
     expect(screen.getByPlaceholderText('Enter username')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter password')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
-    expect(screen.getByText('Clauder')).toBeInTheDocument();
+    expect(screen.getByText('Nebulide')).toBeInTheDocument();
     expect(screen.getByText('Claude Code Web Interface')).toBeInTheDocument();
   });
 

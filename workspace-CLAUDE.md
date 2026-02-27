@@ -1,4 +1,4 @@
-# Clauder Server Environment
+# Nebulide Server Environment
 
 You are running inside a Docker container (Alpine Linux) on a VPS server.
 
@@ -6,8 +6,8 @@ You are running inside a Docker container (Alpine Linux) on a VPS server.
 
 - OS: Alpine Linux 3.20
 - Shell: bash
-- Working directory: /home/clauder/workspace
-- Temp directory: /tmp (persisted at /tmp/clauder on host)
+- Working directory: /home/nebulide/workspace
+- Temp directory: /tmp (persisted at /tmp/nebulide on host)
 - Git: configured, SSH key available for GitHub
 - Node.js + npm: available
 - PostgreSQL: accessible at host `postgres`, port 5432 (credentials in environment)
@@ -52,13 +52,22 @@ git clone git@github.com:user/repo.git
 git add . && git commit -m "message" && git push
 ```
 
+## SSH to Other Servers
+
+SSH keys are available inside the container at `/root/.ssh/` (copied from host with correct permissions on startup). To connect to another server:
+```bash
+ssh user@server-ip
+```
+
+If connecting for the first time, the host key will be automatically added to known_hosts.
+
 ## File Structure
 
 ```
-/home/clauder/workspace/     ← your main working directory (persisted)
+/home/nebulide/workspace/     ← your main working directory (persisted)
   projects/                  ← project files go here
   .packages                  ← auto-generated list of persisted apk packages
 /tmp/                        ← temporary files (persisted between restarts)
 ```
 
-All files in /home/clauder/workspace/ and /tmp/ survive container restarts.
+All files in /home/nebulide/workspace/ and /tmp/ survive container restarts.

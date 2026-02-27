@@ -15,7 +15,7 @@ func TestGenerateTOTPSecret_ReturnsValidKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, key)
 	assert.NotEmpty(t, key.Secret(), "Secret should not be empty")
-	assert.Equal(t, "Clauder", key.Issuer(), "Issuer should be 'Clauder'")
+	assert.Equal(t, "Nebulide", key.Issuer(), "Issuer should be 'Nebulide'")
 	assert.Equal(t, "testuser", key.AccountName(), "Account name should match username")
 	assert.NotEmpty(t, key.URL(), "URL should not be empty")
 }

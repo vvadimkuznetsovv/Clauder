@@ -152,7 +152,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   </g>
                 </svg>
               </div>
-              <h1 className="sidebar-glass-logo">Clauder</h1>
+              <h1 className="sidebar-glass-logo">Nebulide</h1>
             </div>
             <button
               onClick={onClose}

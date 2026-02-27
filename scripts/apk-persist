@@ -1,9 +1,9 @@
 #!/bin/bash
 # Wrapper around "apk add" that persists packages across container restarts.
 # Usage: apk-persist python3 postgresql-client curl
-# Packages are saved to /home/clauder/workspace/.packages and auto-installed on startup.
+# Packages are saved to /home/nebulide/workspace/.packages and auto-installed on startup.
 
-PACKAGES_FILE="/home/clauder/workspace/.packages"
+PACKAGES_FILE="/home/nebulide/workspace/.packages"
 
 if [ $# -eq 0 ]; then
   echo "Usage: apk-persist <package1> [package2] ..."

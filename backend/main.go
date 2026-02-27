@@ -9,12 +9,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 
-	"clauder/config"
-	"clauder/database"
-	"clauder/handlers"
-	"clauder/middleware"
-	"clauder/models"
-	"clauder/services"
+	"nebulide/config"
+	"nebulide/database"
+	"nebulide/handlers"
+	"nebulide/middleware"
+	"nebulide/models"
+	"nebulide/services"
 )
 
 func main() {
