@@ -346,8 +346,6 @@ const TOOLBAR_KEYS: { label: string; data: string }[] = [
   { label: 'C-l', data: '\x0c' },
 ];
 
-const isTouchDevice = 'ontouchstart' in globalThis;
-
 export default function TerminalComponent({ instanceId, active, persistent }: TerminalProps) {
   const termRef = useRef<HTMLDivElement>(null);
   // Store persistent/instanceId in refs to access stable values in cleanup
@@ -357,6 +355,9 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [, setTick] = useState(0);
+  const [toolbarOpen, setToolbarOpen] = useState(() =>
+    localStorage.getItem('nebulide-terminal-toolbar') !== 'closed',
+  );
 
   // Long-press for mobile context menu
   const { handlers: longPressHandlers } = useLongPress({
@@ -419,6 +420,32 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
     if (active) setTimeout(fit, 50);
   }, [active, fit]);
 
+  // ── Touch scroll (swipe up/down to scroll terminal output) ──
+  useEffect(() => {
+    const el = termRef.current;
+    if (!el) return;
+    let startY = 0;
+    const onTouchStart = (e: TouchEvent) => { startY = e.touches[0].clientY; };
+    const onTouchMove = (e: TouchEvent) => {
+      const s = sessions.get(instanceId);
+      if (!s) return;
+      const deltaY = startY - e.touches[0].clientY;
+      const lineH = (s.xterm.options.fontSize || DEFAULT_FONT_SIZE) * 1.2;
+      const lines = Math.round(deltaY / lineH);
+      if (lines !== 0) {
+        s.xterm.scrollLines(lines);
+        startY = e.touches[0].clientY;
+        e.preventDefault();
+      }
+    };
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [instanceId]);
+
   // ── Context menu ──
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -478,8 +505,8 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
         s?.xterm.write('\x1b[2J\x1b[H');
         break;
       case 'clear-all':
-        // Full terminal reset — clears scrollback + screen
-        s?.xterm.reset();
+        // Clear scrollback but keep current viewport (preserves prompt)
+        s?.xterm.clear();
         break;
       case 'reconnect':
         forceReconnect(instanceId);
@@ -523,6 +550,28 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
     }
   }, [instanceId]);
 
+  /** Copy last N lines from terminal buffer (0 = all) */
+  const copyLines = useCallback((n: number) => {
+    const s = sessions.get(instanceId);
+    if (!s) return;
+    const buf = s.xterm.buffer.active;
+    const total = buf.length;
+    const start = n > 0 ? Math.max(0, total - n) : 0;
+    const lines: string[] = [];
+    for (let i = start; i < total; i++) {
+      const line = buf.getLine(i);
+      if (line) lines.push(line.translateToString(true));
+    }
+    // Trim trailing empty lines
+    while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+    const text = lines.join('\n');
+    if (text) {
+      navigator.clipboard.writeText(text)
+        .then(() => toast.success(`Copied ${lines.length} lines`))
+        .catch(() => toast.error('Failed to copy'));
+    }
+  }, [instanceId]);
+
   // ── Build menu items ──
 
   const s = sessions.get(instanceId);
@@ -550,21 +599,46 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
       style={{ background: '#0a0a1a' }}
       onContextMenu={handleContextMenu}
     >
-      {/* Mobile shortcut toolbar */}
-      {isTouchDevice && (
-        <div className="terminal-toolbar">
-          {TOOLBAR_KEYS.map((k) => (
-            <button
-              key={k.label}
-              type="button"
-              className="terminal-toolbar-btn"
-              onPointerDown={(e) => { e.preventDefault(); sendKey(k.data); }}
-            >
-              {k.label}
+      {/* Shortcut toolbar */}
+      <div className={`terminal-toolbar ${toolbarOpen ? '' : 'collapsed'}`}>
+        <button
+          type="button"
+          className="terminal-toolbar-toggle"
+          onClick={() => setToolbarOpen((v) => {
+            localStorage.setItem('nebulide-terminal-toolbar', v ? 'closed' : 'open');
+            setTimeout(fit, 50);
+            return !v;
+          })}
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            {toolbarOpen ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
+          </svg>
+        </button>
+        {toolbarOpen && (
+          <>
+            {TOOLBAR_KEYS.map((k) => (
+              <button
+                key={k.label}
+                type="button"
+                className="terminal-toolbar-btn"
+                onPointerDown={(e) => { e.preventDefault(); sendKey(k.data); }}
+              >
+                {k.label}
+              </button>
+            ))}
+            <div className="terminal-toolbar-sep" />
+            <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(5); }}>
+              Cp5
             </button>
-          ))}
-        </div>
-      )}
+            <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(30); }}>
+              Cp30
+            </button>
+            <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(0); }}>
+              CpAll
+            </button>
+          </>
+        )}
+      </div>
 
       <div
         ref={termRef}

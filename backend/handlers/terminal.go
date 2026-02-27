@@ -103,6 +103,13 @@ func (h *TerminalHandler) HandleWebSocket(c *gin.Context) {
 	termSession.Attach(writer, conn)
 	log.Printf("[Terminal] Attach done key=%s", sessionKey)
 
+	// Close WS when shell exits (e.g. Ctrl+D / exit) so frontend gets onclose and reconnects
+	go func() {
+		<-termSession.Done
+		log.Printf("[Terminal] shell exited, closing WS key=%s", sessionKey)
+		conn.Close()
+	}()
+
 	// WS → PTY (stdin + control messages)
 	log.Printf("[Terminal] WS→PTY loop START key=%s", sessionKey)
 	for {

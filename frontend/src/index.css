@@ -1784,28 +1784,45 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
 
 .xterm { padding: 8px; overscroll-behavior: contain; }
 
-/* ── Terminal mobile toolbar ── */
+/* ── Terminal toolbar ── */
 .terminal-toolbar {
   display: flex;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: 3px;
+  padding: 2px 4px;
   background: rgba(10, 10, 26, 0.95);
   border-bottom: 1px solid rgba(127, 0, 255, 0.15);
   overflow-x: auto;
   scrollbar-width: none;
   flex-shrink: 0;
+  align-items: center;
 }
+.terminal-toolbar.collapsed { padding: 0 4px; }
 .terminal-toolbar::-webkit-scrollbar { display: none; }
+.terminal-toolbar-toggle {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: rgba(127, 0, 255, 0.6);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+.terminal-toolbar-toggle:hover { color: rgba(127, 0, 255, 1); }
 .terminal-toolbar-btn {
   flex-shrink: 0;
-  height: 30px;
-  min-width: 38px;
-  padding: 0 8px;
-  border-radius: 6px;
-  background: rgba(127, 0, 255, 0.12);
-  border: 1px solid rgba(127, 0, 255, 0.25);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 12px;
+  height: 22px;
+  min-width: 28px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(127, 0, 255, 0.10);
+  border: 1px solid rgba(127, 0, 255, 0.20);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-weight: 500;
   cursor: pointer;
@@ -1813,9 +1830,20 @@ body { animation: scrollbarShimmer 3s ease-in-out infinite; }
   -webkit-user-select: none;
   transition: background 0.15s, border-color 0.15s;
 }
+.terminal-toolbar-btn:hover {
+  background: rgba(127, 0, 255, 0.2);
+  border-color: rgba(127, 0, 255, 0.4);
+}
 .terminal-toolbar-btn:active {
   background: rgba(127, 0, 255, 0.3);
   border-color: rgba(127, 0, 255, 0.5);
+}
+.terminal-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(127, 0, 255, 0.25);
+  flex-shrink: 0;
+  align-self: center;
 }
 
 /* ── Terminal search bar ── */

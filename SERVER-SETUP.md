@@ -410,6 +410,207 @@ git clone https://github.com/vvadimkuznetsovv/Nebulide.git /opt/nebulide
 
 - `git clone` — скачать репозиторий в указанную директорию
 
+### 3.13. DH-параметры (Diffie-Hellman)
+
+Нужны для усиленного SSL-шифрования. Nginx-конфиг ссылается на этот файл.
+
+```bash
+mkdir -p /etc/letsencrypt
+openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+```
+
+- `openssl dhparam` — генерация параметров Diffie-Hellman для Perfect Forward Secrecy
+- `2048` — длина ключа в битах (баланс безопасности и скорости)
+- Занимает 1–2 минуты. Генерируется один раз
+
+### 3.14. SSL-сертификаты (Let's Encrypt)
+
+```bash
+apt install -y certbot
+```
+
+- `certbot` — официальный клиент Let's Encrypt. Получает бесплатные SSL-сертификаты
+
+Получить сертификаты через standalone-режим (порты 80/443 должны быть свободны — nginx ещё не запущен):
+
+```bash
+# Nebulide (основной домен)
+certbot certonly --standalone -d nebulide.ru --non-interactive --agree-tos -m unforgettableemoji@gmail.com
+```
+
+- `certonly` — только получить сертификат, не настраивать nginx
+- `--standalone` — certbot сам запускает временный HTTP-сервер для подтверждения владения доменом
+- `-d nebulide.ru` — домен (DNS должен указывать на этот сервер!)
+- `--non-interactive` — без интерактивных вопросов
+- `--agree-tos` — принять условия Let's Encrypt
+- `-m` — email для уведомлений об истечении сертификатов
+
+```bash
+# EduLearn
+certbot certonly --standalone -d edulearn.tech -d www.edulearn.tech --non-interactive --agree-tos -m unforgettableemoji@gmail.com
+
+# SmartRS
+certbot certonly --standalone -d smartrs.tech -d www.smartrs.tech --non-interactive --agree-tos -m unforgettableemoji@gmail.com
+```
+
+- `-d domain -d www.domain` — один сертификат на два варианта (с www и без)
+
+```bash
+# Включить автопродление сертификатов (каждые 60 дней)
+systemctl enable certbot.timer
+systemctl start certbot.timer
+```
+
+- Сертификаты Let's Encrypt живут 90 дней. Таймер проверяет и продлевает их автоматически
+- deploy.yml устанавливает renewal hook — при продлении Docker nginx автоматически перечитает новые сертификаты
+
+**ВАЖНО:** Перед запуском certbot убедись, что DNS-записи для всех доменов указывают на IP этого сервера (45.156.20.105). Без этого certbot не сможет подтвердить владение доменом.
+
+### 3.15. Директории для других сайтов
+
+Nginx монтирует эти директории для статических сайтов:
+
+```bash
+mkdir -p /var/www/edulearn/dist
+mkdir -p /var/www/smartrs/dist
+```
+
+- Сюда деплоятся собранные фронтенды edulearn и smartrs
+- Если сайты ещё не собраны — создай пустые `index.html`:
+
+```bash
+echo '<h1>Coming soon</h1>' > /var/www/edulearn/dist/index.html
+echo '<h1>Coming soon</h1>' > /var/www/smartrs/dist/index.html
+```
+
+### 3.16. Workspace и SSH-ключи для контейнера
+
+Контейнер Nebulide монтирует workspace и SSH-ключи с хоста:
+
+```bash
+# Создать workspace (рабочая директория Claude внутри контейнера)
+mkdir -p /home/nebulide/workspace
+chown nebulide:nebulide /home/nebulide/workspace
+
+# Создать tmpdir для контейнера
+mkdir -p /tmp/nebulide
+```
+
+- `/home/nebulide/workspace` — монтируется в контейнер, здесь Claude хранит файлы
+- `/tmp/nebulide` — монтируется как `/tmp` в контейнере
+
+SSH-ключи и git config для nebulide **не нужны** — Claude работает как отдельный пользователь через code-server плагин, не от имени nebulide.
+
+Если SSH-ключи уже были сгенерированы — удали:
+
+```bash
+rm -f /home/nebulide/.ssh/id_ed25519 /home/nebulide/.ssh/id_ed25519.pub
+rm -f /home/nebulide/.gitconfig
+```
+
+### 3.17. Файл `.env`
+
+Файл с переменными окружения для приложения:
+
+```bash
+nano /opt/nebulide/.env
+```
+
+Содержимое:
+
+```
+PORT=8080
+GIN_MODE=release
+
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=nebulide
+DB_PASSWORD=СГЕНЕРИРУЙ_ПАРОЛЬ_БД
+DB_NAME=nebulide
+
+JWT_SECRET=СГЕНЕРИРУЙ_64_СИМВОЛА
+JWT_EXPIRY=15m
+JWT_REFRESH_EXPIRY=7d
+
+CLAUDE_ALLOWED_TOOLS=Read,Edit,Write,Bash,Glob,Grep
+CLAUDE_WORKING_DIR=/home/nebulide/workspace
+
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=ПАРОЛЬ_АДМИНА
+```
+
+Сгенерировать надёжные значения:
+
+```bash
+# Пароль БД (32 символа)
+openssl rand -base64 32
+
+# JWT секрет (64 символа)
+openssl rand -base64 48
+```
+
+- `DB_HOST=postgres` — имя сервиса в docker-compose (не localhost!)
+- `GIN_MODE=release` — Go-фреймворк в production-режиме (без debug-логов)
+- `ADMIN_USERNAME/PASSWORD` — первый пользователь (создаётся при первом запуске)
+
+### 3.18. Первая сборка и запуск
+
+```bash
+# Собрать фронтенд
+npm ci --prefix /opt/nebulide/frontend
+npm run build --prefix /opt/nebulide/frontend
+```
+
+- `npm ci` — установка зависимостей (быстрее и надёжнее чем `npm install` для production)
+- `npm run build` — собрать React-приложение → `/opt/nebulide/frontend/dist/`
+
+```bash
+# Собрать бэкенд
+cd /opt/nebulide/backend && /usr/local/go/bin/go build -o nebulide .
+```
+
+- `go build -o nebulide .` — скомпилировать Go-приложение в бинарный файл `nebulide`
+
+```bash
+# Собрать Docker-образы
+docker compose -f /opt/nebulide/docker-compose.yml build
+```
+
+```bash
+# Остановить системный nginx (если запущен) — Docker nginx займёт порты 80/443
+systemctl stop nginx 2>/dev/null || true
+systemctl disable nginx 2>/dev/null || true
+```
+
+```bash
+# Запустить все контейнеры
+docker compose -f /opt/nebulide/docker-compose.yml up -d
+```
+
+- `-d` — в фоне (detached mode)
+- Запускает: nginx, postgres, app, code-server
+
+```bash
+# Проверить статус контейнеров (все должны быть "Up")
+docker compose -f /opt/nebulide/docker-compose.yml ps
+
+# Посмотреть логи приложения
+docker compose -f /opt/nebulide/docker-compose.yml logs app
+
+# Посмотреть логи nginx
+docker compose -f /opt/nebulide/docker-compose.yml logs nginx
+```
+
+```bash
+# Установить certbot renewal hook (перезагрузка nginx при обновлении сертификатов)
+mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+cat > /etc/letsencrypt/renewal-hooks/deploy/reload-docker-nginx.sh << 'HOOK'
+#!/bin/bash
+docker compose -f /opt/nebulide/docker-compose.yml exec -T nginx nginx -s reload
+HOOK
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-docker-nginx.sh
+```
+
 ---
 
 ## Шаг 4: GitHub Secrets (для CI/CD)
@@ -435,11 +636,25 @@ GitHub Actions использует эти секреты для автомат�
 
 ```powershell
 ssh nebulide                           # Подключение по ключу
-ssh nebulide "ufw status"              # Firewall активен
-ssh nebulide "fail2ban-client status"   # Fail2ban работает
-ssh nebulide "docker --version"         # Docker установлен
+ssh nebulide "sudo ufw status"         # Firewall активен
+ssh nebulide "sudo fail2ban-client status"  # Fail2ban работает
+ssh nebulide "docker --version"        # Docker установлен
 ssh nebulide "go version"              # Go установлен
-ssh nebulide "node --version"           # Node.js установлен
+ssh nebulide "node --version"          # Node.js установлен
+```
+
+В браузере:
+
+```
+https://nebulide.ru                    # Должна загрузиться страница логина
+```
+
+На сервере:
+
+```bash
+sudo docker compose -f /opt/nebulide/docker-compose.yml ps     # Все контейнеры "Up"
+sudo docker compose -f /opt/nebulide/docker-compose.yml logs app   # Без ошибок
+curl -I https://nebulide.ru            # HTTP 200 или 301
 ```
 
 ---
@@ -449,7 +664,10 @@ ssh nebulide "node --version"           # Node.js установлен
 1. Создать SSH-ключ на Windows (шаг 1)
 2. Настроить SSH config (шаг 2)
 3. Подключиться к серверу от root
-4. Выполнить шаги 3.1–3.12 по порядку
+4. Выполнить шаги 3.1–3.5 по порядку
 5. Проверить подключение по ключу из НОВОГО терминала (перед закрытием root-сессии!)
-6. Настроить GitHub Secrets (шаг 4)
-7. Запушить код — CI/CD задеплоит автоматически
+6. Отключить root SSH (шаг 3.6)
+7. Выполнить шаги 3.7–3.18 (firewall → запуск)
+8. Настроить GitHub Secrets (шаг 4)
+9. Проверить: открыть https://nebulide.ru
+10. Запушить код — CI/CD задеплоит автоматически

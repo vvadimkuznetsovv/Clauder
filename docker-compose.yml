@@ -12,8 +12,6 @@ services:
       - /var/www/edulearn/dist:/var/www/edulearn/dist:ro
       - /var/www/smartrs/dist:/var/www/smartrs/dist:ro
       - nginx_logs:/var/log/nginx
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       - app
 
@@ -40,8 +38,6 @@ services:
     volumes:
       - /home/nebulide/workspace:/home/nebulide/workspace
       - /tmp/nebulide:/tmp
-      - /home/nebulide/.gitconfig:/root/.gitconfig:ro
-      - /home/nebulide/.ssh:/root/.ssh-mount:ro
       - usr_local:/usr/local
 
   code-server:
