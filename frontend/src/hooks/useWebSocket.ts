@@ -24,7 +24,13 @@ export function useWebSocket({
   const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const token = await ensureFreshToken();
+    let token: string;
+    try {
+      token = await ensureFreshToken();
+    } catch {
+      console.error('[useWebSocket] Token refresh failed');
+      return;
+    }
     const separator = url.includes('?') ? '&' : '?';
     const wsUrl = `${url}${separator}token=${token}`;
 

@@ -39,9 +39,9 @@ export function refreshTokenOnce(): Promise<string | null> {
  * /api/auth/refresh if needed. Used by WebSocket connections (terminal, chat)
  * which bypass the axios interceptor.
  */
-export async function ensureFreshToken(): Promise<string | null> {
+export async function ensureFreshToken(): Promise<string> {
   const token = localStorage.getItem('access_token');
-  if (!token) return null;
+  if (!token) throw new Error('No access token');
 
   // Decode JWT payload to check expiry
   try {
@@ -54,11 +54,7 @@ export async function ensureFreshToken(): Promise<string | null> {
   }
 
   // Token expired or about to expire — use shared refresh
-  try {
-    const newToken = await refreshTokenOnce();
-    if (newToken) return newToken;
-  } catch (err) {
-    console.error('[ensureFreshToken] Token refresh FAILED — using old token', err);
-  }
-  return token; // try with old token anyway
+  const newToken = await refreshTokenOnce();
+  if (newToken) return newToken;
+  throw new Error('Token refresh returned null');
 }

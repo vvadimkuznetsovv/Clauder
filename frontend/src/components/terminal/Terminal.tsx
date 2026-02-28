@@ -6,7 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import ContextMenu, { type ContextMenuItem } from '../files/ContextMenu';
 import { useLongPress } from '../../hooks/useLongPress';
-import { ensureFreshToken } from '../../api/tokenRefresh';
+import { ensureFreshToken, refreshTokenOnce } from '../../api/tokenRefresh';
 import toast from 'react-hot-toast';
 
 // ── Clipboard helper: first readText() on mobile may fail (permission not yet initialized) ──
@@ -144,11 +144,21 @@ async function connectWs(instanceId: string): Promise<void> {
 
   session.xterm.write(_blue('[WS] Getting token...') + '\r\n');
 
-  const token = await ensureFreshToken();
-  if (!token) {
-    console.warn(`[Terminal] connectWs SKIP — no access_token id=${instanceId}`);
-    session.xterm.write(_red('[WS] No access token! Login required.') + '\r\n');
-    return;
+  let token: string;
+  try {
+    token = await ensureFreshToken();
+  } catch {
+    session.xterm.write(_yellow('[WS] Auth expired — refreshing...') + '\r\n');
+    try {
+      const newToken = await refreshTokenOnce();
+      if (!newToken) throw new Error('null');
+      token = newToken;
+    } catch {
+      session.xterm.write(_red('[WS] Auth failed — please reload or re-login]') + '\r\n');
+      session.xterm.write(_blue('[Right-click \u2192 Reconnect]') + '\r\n');
+      session.notifyRerender?.();
+      return;
+    }
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -247,8 +257,9 @@ function forceReconnect(instanceId: string): void {
     session.ws = null;
   }
   session.reconnectAttempts = 0;
-  session.xterm.write('\r\n\x1b[38;2;110;180;255m[Reconnecting...]\x1b[0m\r\n');
-  connectWs(instanceId);
+  session.xterm.write('\r\n' + _blue('[Reconnecting...]') + '\r\n');
+  // Small delay to allow backend to finish starting after redeploy
+  setTimeout(() => connectWs(instanceId), 500);
 }
 
 function getOrCreateSession(instanceId: string): TermSession {
