@@ -330,6 +330,19 @@ export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
           })
           .catch(() => toast.error('Failed to paste'));
         break;
+      case 'erase':
+        editor.focus();
+        {
+          const sel = editor.getSelection();
+          if (sel && !sel.isEmpty()) {
+            editor.executeEdits('erase', [{
+              range: sel,
+              text: '',
+              forceMoveMarkers: true,
+            }]);
+          }
+        }
+        break;
       case 'command-palette':
         editor.focus();
         editor.trigger('contextMenu', 'editor.action.quickCommand', null);
@@ -483,6 +496,7 @@ export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
                 {TB('Cut', 'cut')}
                 {TB('Copy', 'copy')}
                 {TB('Paste', 'paste')}
+                {TB('Erase', 'erase')}
                 {SEP}
                 <button
                   type="button"
