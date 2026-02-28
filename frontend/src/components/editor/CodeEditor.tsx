@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import '../../monacoConfig'; // must run before <Editor> mounts — configures local loader
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { readFile, writeFile } from '../../api/files';
 import { useWorkspaceStore } from '../../store/workspaceStore';
