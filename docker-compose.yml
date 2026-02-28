@@ -39,6 +39,9 @@ services:
       - /home/nebulide/workspace:/home/nebulide/workspace
       - /tmp/nebulide:/tmp
       - usr_local:/usr/local
+      - ssh_keys:/root/.ssh
+      # Seed SSH keys from host (optional, read-only):
+      # - ~/.ssh:/root/.ssh-mount:ro
 
   code-server:
     build:
@@ -58,5 +61,6 @@ services:
 volumes:
   postgres_data:
   usr_local:
+  ssh_keys:
   code-server-config:
   nginx_logs:

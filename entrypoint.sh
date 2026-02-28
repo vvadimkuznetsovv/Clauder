@@ -19,22 +19,32 @@ if [ -f "$PACKAGES_FILE" ]; then
   echo "[entrypoint] Done."
 fi
 
-# Setup SSH keys (copy from read-only mount with correct permissions)
-SSH_SOURCE="/root/.ssh-mount"
+# SSH setup — /root/.ssh is a persistent volume (ssh_keys)
 SSH_TARGET="/root/.ssh"
-if [ -d "$SSH_SOURCE" ]; then
-  mkdir -p "$SSH_TARGET"
-  chmod 700 "$SSH_TARGET"
+SSH_SOURCE="/root/.ssh-mount"
+mkdir -p "$SSH_TARGET"
+chmod 700 "$SSH_TARGET"
+
+# Seed from host mount if available (first run or key update)
+if [ -d "$SSH_SOURCE" ] && [ "$(ls -A "$SSH_SOURCE" 2>/dev/null)" ]; then
   for f in "$SSH_SOURCE"/*; do
     [ -f "$f" ] || continue
     cp "$f" "$SSH_TARGET/$(basename "$f")"
   done
+  echo "[entrypoint] SSH keys seeded from host mount."
+fi
+
+# Fix permissions on all SSH files (volume or seeded)
+if [ "$(ls -A "$SSH_TARGET" 2>/dev/null)" ]; then
   chmod 600 "$SSH_TARGET"/id_* 2>/dev/null || true
   chmod 644 "$SSH_TARGET"/*.pub 2>/dev/null || true
   chmod 644 "$SSH_TARGET"/known_hosts 2>/dev/null || true
   chmod 644 "$SSH_TARGET"/config 2>/dev/null || true
   echo "[entrypoint] SSH keys configured."
 fi
+
+# Symlink nebulide user SSH → root SSH (same keys, avoids duplication)
+ln -sfn "$SSH_TARGET" /home/nebulide/.ssh
 
 # Ensure workspace ownership (volume mount may override)
 chown -R nebulide:nebulide /home/nebulide/workspace 2>/dev/null || true
