@@ -108,7 +108,8 @@ export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
   setCtxMenuRef.current = setCtxMenu;
 
   // Mobile long-press context menu — capture phase so it fires before Monaco
-  // intercepts pointer events and regardless of Monaco's internal stopPropagation.
+  // intercepts pointer events. 700ms delay + selection check so text selection
+  // gestures aren't interrupted by the context menu.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -126,13 +127,17 @@ export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
       const cx = e.clientX;
       const cy = e.clientY;
       timer = window.setTimeout(() => {
+        // If Monaco has a non-empty selection, the user is selecting text — don't show menu
+        const sel = editorRef.current?.getSelection();
+        if (sel && !sel.isEmpty()) return;
+
         setCtxMenuRef.current({ x: cx, y: cy });
         // Suppress the browser's native contextmenu that fires after long-press
         el.addEventListener('contextmenu', (ev) => { ev.preventDefault(); ev.stopPropagation(); }, {
           capture: true,
           once: true,
         });
-      }, 500);
+      }, 700);
     };
 
     const onUp = (e: PointerEvent) => {
@@ -340,9 +345,6 @@ export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
     { label: 'Command Palette', action: 'command-palette', icon: EDITOR_ICONS.command },
   ];
 
-  // containerRef must always be on the outermost div — if we returned early for !filePath,
-  // the ref would be null on first mount and the long-press useEffect ([] deps) would
-  // never attach its capture-phase listeners, even after filePath becomes non-null.
   return (
     <div className="h-full" ref={containerRef}>
       {!filePath ? (
