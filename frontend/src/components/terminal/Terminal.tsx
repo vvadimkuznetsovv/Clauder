@@ -358,6 +358,8 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
   const [toolbarOpen, setToolbarOpen] = useState(() =>
     localStorage.getItem('nebulide-terminal-toolbar') !== 'closed',
   );
+  const [copyMode, setCopyMode] = useState(false);
+  const selRef = useRef({ start: 0, end: 0 });
 
   // Long-press for mobile context menu
   const { handlers: longPressHandlers } = useLongPress({
@@ -577,6 +579,73 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
     }
   }, [instanceId]);
 
+  // ── Copy mode (row 2) — line-based selection via buttons ──
+
+  const toggleCopyMode = useCallback(() => {
+    setCopyMode((prev) => {
+      if (prev) {
+        // Exiting — clear selection
+        sessions.get(instanceId)?.xterm.clearSelection();
+        return false;
+      }
+      // Entering — select last non-empty line
+      const s = sessions.get(instanceId);
+      if (!s) return false;
+      const buf = s.xterm.buffer.active;
+      let lastLine = buf.length - 1;
+      while (lastLine > 0) {
+        const line = buf.getLine(lastLine);
+        if (line && line.translateToString(true).trim() !== '') break;
+        lastLine--;
+      }
+      selRef.current = { start: lastLine, end: lastLine };
+      s.xterm.selectLines(lastLine, lastLine);
+      s.xterm.scrollToLine(lastLine);
+      return true;
+    });
+  }, [instanceId]);
+
+  const moveSelBoundary = useCallback((boundary: 'start' | 'end', delta: number) => {
+    const s = sessions.get(instanceId);
+    if (!s) return;
+    const buf = s.xterm.buffer.active;
+    const maxLine = buf.length - 1;
+    const sel = selRef.current;
+    if (boundary === 'start') {
+      sel.start = Math.max(0, Math.min(maxLine, sel.start + delta));
+      if (sel.start > sel.end) sel.end = sel.start;
+    } else {
+      sel.end = Math.max(0, Math.min(maxLine, sel.end + delta));
+      if (sel.end < sel.start) sel.start = sel.end;
+    }
+    s.xterm.selectLines(sel.start, sel.end);
+    s.xterm.scrollToLine(boundary === 'start' ? sel.start : sel.end);
+  }, [instanceId]);
+
+  const copySelection = useCallback(() => {
+    const s = sessions.get(instanceId);
+    if (!s) return;
+    const sel = s.xterm.getSelection();
+    if (sel) {
+      navigator.clipboard.writeText(sel)
+        .then(() => toast.success('Copied'))
+        .catch(() => toast.error('Failed to copy'));
+    }
+  }, [instanceId]);
+
+  const selectAllLines = useCallback(() => {
+    const s = sessions.get(instanceId);
+    if (!s) return;
+    s.xterm.selectAll();
+    const buf = s.xterm.buffer.active;
+    selRef.current = { start: 0, end: buf.length - 1 };
+  }, [instanceId]);
+
+  const exitCopyMode = useCallback(() => {
+    sessions.get(instanceId)?.xterm.clearSelection();
+    setCopyMode(false);
+  }, [instanceId]);
+
   // ── Build menu items ──
 
   const s = sessions.get(instanceId);
@@ -632,18 +701,55 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
               </button>
             ))}
             <div className="terminal-toolbar-sep" />
-            <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(5); }}>
-              Cp5
-            </button>
-            <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(30); }}>
-              Cp30
-            </button>
-            <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(0); }}>
-              CpAll
+            <button
+              type="button"
+              className={`terminal-toolbar-btn${copyMode ? ' active' : ''}`}
+              onPointerDown={(e) => { e.preventDefault(); toggleCopyMode(); }}
+            >
+              f-C
             </button>
           </>
         )}
       </div>
+
+      {/* Row 2: copy & selection (visible when copyMode && toolbarOpen) */}
+      {copyMode && toolbarOpen && (
+        <div className="terminal-toolbar">
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); moveSelBoundary('start', -1); }}>
+            S{'\u2191'}
+          </button>
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); moveSelBoundary('start', 1); }}>
+            S{'\u2193'}
+          </button>
+          <div className="terminal-toolbar-sep" />
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); moveSelBoundary('end', -1); }}>
+            E{'\u2191'}
+          </button>
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); moveSelBoundary('end', 1); }}>
+            E{'\u2193'}
+          </button>
+          <div className="terminal-toolbar-sep" />
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copySelection(); }}>
+            Copy
+          </button>
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); selectAllLines(); }}>
+            All
+          </button>
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); exitCopyMode(); }}>
+            {'\u00d7'}
+          </button>
+          <div className="terminal-toolbar-sep" />
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(5); }}>
+            Cp5
+          </button>
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(30); }}>
+            Cp30
+          </button>
+          <button type="button" className="terminal-toolbar-btn" onPointerDown={(e) => { e.preventDefault(); copyLines(0); }}>
+            CpAll
+          </button>
+        </div>
+      )}
 
       <div
         ref={termRef}
