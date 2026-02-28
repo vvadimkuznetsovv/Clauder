@@ -289,11 +289,6 @@ export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
     previousTabIdRef.current = tabId;
   }, [filePath, tabId]);
 
-  const handleCtxAction = useCallback((action: string) => {
-    setCtxMenu(null);
-    runAction(action);
-  }, [runAction]);
-
   // Shared action runner for both toolbar and context menu
   const runAction = useCallback((action: string) => {
     const editor = editorRef.current;
@@ -349,6 +344,11 @@ export default function CodeEditor({ filePath, tabId }: CodeEditorProps) {
         break;
     }
   }, []);
+
+  const handleCtxAction = useCallback((action: string) => {
+    setCtxMenu(null);
+    runAction(action);
+  }, [runAction]);
 
   const hasSelection = editorRef.current?.getSelection()?.isEmpty() === false;
 
