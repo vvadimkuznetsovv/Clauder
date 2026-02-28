@@ -840,15 +840,6 @@ export default function TerminalComponent({ instanceId, active, persistent }: Te
             <div className="terminal-toolbar-sep" />
             <button
               type="button"
-              className="terminal-toolbar-btn"
-              onPointerDown={(e) => e.preventDefault()}
-              onClick={pasteToTerminal}
-            >
-              C-p
-            </button>
-            <div className="terminal-toolbar-sep" />
-            <button
-              type="button"
               className={`terminal-toolbar-btn${row2Open ? ' active' : ''}`}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => setRow2Open((v) => {
