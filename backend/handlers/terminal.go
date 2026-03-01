@@ -104,13 +104,13 @@ func (h *TerminalHandler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	// Install this WS as the output destination for the persistent PTY reader.
-	// pumpOutput (single goroutine per session) writes to this wsWriter.
-	// Old WS (if any) is closed, which breaks its WS→PTY read loop.
+	// Register this WS as an output destination for the persistent PTY reader.
+	// pumpOutput broadcasts to all writers via multiWriter.
+	// Multiple devices on the same workspace share one PTY.
 	writer := &wsWriter{conn: conn}
-	log.Printf("[Terminal] calling Attach key=%s", sessionKey)
-	termSession.Attach(writer, conn)
-	log.Printf("[Terminal] Attach done key=%s", sessionKey)
+	log.Printf("[Terminal] calling AddWriter key=%s", sessionKey)
+	termSession.AddWriter(writer, conn)
+	log.Printf("[Terminal] AddWriter done key=%s", sessionKey)
 
 	// Ping/pong keepalive — detect dead clients, prevent proxy timeouts.
 	// WriteControl is concurrency-safe (doesn't conflict with pumpOutput writes).
@@ -171,6 +171,9 @@ func (h *TerminalHandler) HandleWebSocket(c *gin.Context) {
 			h.terminal.Resize(sessionKey, msg.Rows, msg.Cols)
 		}
 	}
+
+	// Unregister this writer — other devices may still be connected.
+	termSession.RemoveWriter(writer)
 
 	log.Printf("[Terminal] handler EXIT key=%s", sessionKey)
 	// Session stays alive — shell persists for reconnection.

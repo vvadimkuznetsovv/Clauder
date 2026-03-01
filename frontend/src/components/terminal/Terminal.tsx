@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css';
 import ContextMenu, { type ContextMenuItem } from '../files/ContextMenu';
 import { useLongPress } from '../../hooks/useLongPress';
 import { ensureFreshToken, refreshTokenOnce } from '../../api/tokenRefresh';
+import { useWorkspaceSessionStore } from '../../store/workspaceSessionStore';
 import toast from 'react-hot-toast';
 
 // ── Clipboard helper: first readText() on mobile may fail (permission not yet initialized) ──
@@ -53,14 +54,9 @@ const MAX_RECONNECT = 5;
 const RECONNECT_DELAY = 800;
 const RECONNECT_DELAY_BACKEND_DOWN = 3000; // longer delay when backend is unreachable
 
-/** Unique ID per browser tab — so two tabs/devices get separate PTY sessions */
-function getTabSessionId(): string {
-  let id = sessionStorage.getItem('nebulide-tab-id');
-  if (!id) {
-    id = Math.random().toString(36).slice(2, 10);
-    sessionStorage.setItem('nebulide-tab-id', id);
-  }
-  return id;
+/** Get workspace session ID — terminals are scoped to workspace, shared across devices */
+function getWorkspaceSessionId(): string {
+  return useWorkspaceSessionStore.getState().activeSessionId || 'default';
 }
 
 function createXterm(instanceId: string): TermSession {
@@ -163,8 +159,8 @@ async function connectWs(instanceId: string): Promise<void> {
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const tabId = getTabSessionId();
-  const wsInstanceId = `${instanceId}@${tabId}`;
+  const wsId = getWorkspaceSessionId();
+  const wsInstanceId = `${instanceId}@ws:${wsId}`;
   const url = `${protocol}//${window.location.host}/ws/terminal?token=${token}&instanceId=${encodeURIComponent(wsInstanceId)}`;
   const safeUrl = url.replace(/token=[^&]+/, 'token=***');
   session.xterm.write(_blue(`[WS] Connecting ${safeUrl}`) + '\r\n');
@@ -189,14 +185,23 @@ async function connectWs(instanceId: string): Promise<void> {
       }
     } catch { /* xterm may not be attached yet */ }
 
-    // Force xterm repaint on next frame — ensures prompt (user@host:path$) is visible
-    // after reconnect. Without this, buffered content isn't painted until a resize event.
-    requestAnimationFrame(() => {
+    // Force shell to redraw prompt via SIGWINCH (dummy resize toggle).
+    // The replay buffer sends recent output, but the shell prompt line
+    // needs SIGWINCH to redraw after reconnect. Also refresh xterm viewport.
+    setTimeout(() => {
       try {
-        session.fitAddon.fit();
-        session.xterm.refresh(0, session.xterm.rows - 1);
+        const dims2 = session.fitAddon.proposeDimensions();
+        if (dims2 && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'resize', rows: dims2.rows + 1, cols: dims2.cols }));
+          setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'resize', rows: dims2.rows, cols: dims2.cols }));
+            }
+            session.xterm.refresh(0, session.xterm.rows - 1);
+          }, 50);
+        }
       } catch { /* ignore */ }
-    });
+    }, 150);
   };
 
   ws.onmessage = (event) => {

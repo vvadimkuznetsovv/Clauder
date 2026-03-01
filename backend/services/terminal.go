@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bytes"
 	"io"
 	"log"
 	"os"
@@ -13,6 +12,69 @@ import (
 	gopty "github.com/aymanbagabas/go-pty"
 )
 
+// ── multiWriter: broadcasts PTY output to all connected WebSocket clients ──
+
+const replayBufCap = 65536 // 64KB ring buffer for late joiners
+
+type multiWriter struct {
+	mu      sync.Mutex
+	writers map[io.Writer]io.Closer
+
+	// replayBuf stores the last N bytes of PTY output so that new
+	// connections see the current prompt / recent output.
+	replayBuf []byte
+}
+
+func newMultiWriter() *multiWriter {
+	return &multiWriter{
+		writers: make(map[io.Writer]io.Closer),
+	}
+}
+
+// Write sends data to all connected writers and appends to the replay buffer.
+// Dead writers are removed automatically.
+func (mw *multiWriter) Write(p []byte) (int, error) {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+
+	// Append to replay buffer (ring: keep last replayBufCap bytes)
+	mw.replayBuf = append(mw.replayBuf, p...)
+	if len(mw.replayBuf) > replayBufCap {
+		mw.replayBuf = mw.replayBuf[len(mw.replayBuf)-replayBufCap:]
+	}
+
+	for w, closer := range mw.writers {
+		if _, err := w.Write(p); err != nil {
+			closer.Close()
+			delete(mw.writers, w)
+		}
+	}
+	return len(p), nil
+}
+
+// Add registers a new writer. Flushes the replay buffer to it so the client
+// sees the current terminal state (prompt, recent output).
+func (mw *multiWriter) Add(w io.Writer, closer io.Closer) {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+
+	// Replay recent output to the new connection
+	if len(mw.replayBuf) > 0 {
+		w.Write(mw.replayBuf)
+	}
+
+	mw.writers[w] = closer
+}
+
+// Remove unregisters a writer (called when WS disconnects).
+func (mw *multiWriter) Remove(w io.Writer) {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+	delete(mw.writers, w)
+}
+
+// ── TerminalService ──
+
 type TerminalService struct {
 	sessions map[string]*TerminalSession
 	mu       sync.RWMutex
@@ -23,16 +85,7 @@ type TerminalSession struct {
 	Cmd  *gopty.Cmd
 	Done chan struct{}
 
-	// connMu guards active (io.Closer for the current WS connection).
-	connMu sync.Mutex
-	active io.Closer
-
-	// writerMu guards writer, initBuf, and attached.
-	// pumpOutput buffers output before first Attach; afterwards writes directly.
-	writerMu sync.Mutex
-	writer   io.Writer
-	initBuf  bytes.Buffer // PTY output before first Attach (e.g. shell prompt)
-	attached bool         // true after first Attach
+	mw *multiWriter // broadcasts PTY output to all attached WS connections
 }
 
 func NewTerminalService() *TerminalService {
@@ -155,12 +208,13 @@ func (s *TerminalService) createLocked(sessionKey string, workingDir string) (*T
 		Pty:  p,
 		Cmd:  cmd,
 		Done: make(chan struct{}),
+		mw:   newMultiWriter(),
 	}
 
 	log.Printf("[TerminalService] shell started pid=%d key=%s", cmd.Process.Pid, sessionKey)
 
 	// Single persistent PTY reader — survives WS reconnections.
-	// Writes to whatever io.Writer is installed via Attach().
+	// Writes to multiWriter which broadcasts to all attached clients.
 	go session.pumpOutput(sessionKey)
 
 	// Monitor process exit
@@ -179,10 +233,9 @@ func (s *TerminalService) createLocked(sessionKey string, workingDir string) (*T
 	return session, nil
 }
 
-// pumpOutput is the single goroutine that reads PTY output and forwards it
-// to the currently attached writer. It runs for the entire lifetime of the
-// shell process. When a WS reconnects, Attach() swaps the writer — this
-// goroutine doesn't restart.
+// pumpOutput is the single goroutine that reads PTY output and broadcasts it
+// to all attached writers via multiWriter. It runs for the entire lifetime of
+// the shell process.
 func (ts *TerminalSession) pumpOutput(sessionKey string) {
 	log.Printf("[TerminalService] pumpOutput START key=%s", sessionKey)
 	buf := make([]byte, 4096)
@@ -194,23 +247,8 @@ func (ts *TerminalSession) pumpOutput(sessionKey string) {
 			}
 			break
 		}
-		ts.writerMu.Lock()
-		w := ts.writer
-		if w == nil && !ts.attached {
-			// Buffer initial output (shell prompt etc.) until first Attach — cap 64KB
-			if ts.initBuf.Len() < 65536 {
-				ts.initBuf.Write(buf[:n])
-			}
-			ts.writerMu.Unlock()
-			continue
-		}
-		ts.writerMu.Unlock()
-		if w != nil {
-			// Write error = stale/closed WS conn, ignore (next Attach will swap in a new writer)
-			if _, wErr := w.Write(buf[:n]); wErr != nil {
-				log.Printf("[TerminalService] pumpOutput write error (stale conn): %v key=%s", wErr, sessionKey)
-			}
-		}
+		// Broadcast to all connected WebSocket clients (and buffer in replayBuf)
+		ts.mw.Write(buf[:n])
 	}
 	log.Printf("[TerminalService] pumpOutput STOP key=%s", sessionKey)
 	close(ts.Done)
@@ -254,34 +292,17 @@ func (ts *TerminalSession) IsAlive() bool {
 	}
 }
 
-// Attach installs a new writer+closer as the active WS connection.
-// The single pumpOutput goroutine will use this writer for PTY output.
-// The old connection (if any) is closed, which stops its WS→PTY read loop.
-func (ts *TerminalSession) Attach(w io.Writer, closer io.Closer) {
-	ts.writerMu.Lock()
-	// Flush buffered initial output (shell prompt) to first writer
-	if !ts.attached {
-		ts.attached = true
-		if ts.initBuf.Len() > 0 {
-			log.Printf("[TerminalService] Attach: flushing %d bytes of initial output", ts.initBuf.Len())
-			w.Write(ts.initBuf.Bytes())
-			ts.initBuf.Reset()
-		}
-	}
-	ts.writer = w
-	ts.writerMu.Unlock()
+// AddWriter registers a new WS connection to receive PTY output.
+// The replay buffer is flushed to the new writer so it sees current terminal state.
+func (ts *TerminalSession) AddWriter(w io.Writer, closer io.Closer) {
+	log.Printf("[TerminalService] AddWriter: registering %p", w)
+	ts.mw.Add(w, closer)
+}
 
-	ts.connMu.Lock()
-	old := ts.active
-	ts.active = closer
-	ts.connMu.Unlock()
-
-	if old != nil {
-		log.Printf("[TerminalService] Attach: closing OLD conn %p, installing NEW %p", old, closer)
-		old.Close()
-	} else {
-		log.Printf("[TerminalService] Attach: no old conn, installing NEW %p", closer)
-	}
+// RemoveWriter unregisters a WS connection (called on disconnect).
+func (ts *TerminalSession) RemoveWriter(w io.Writer) {
+	log.Printf("[TerminalService] RemoveWriter: removing %p", w)
+	ts.mw.Remove(w)
 }
 
 func (ts *TerminalSession) Close() {
