@@ -131,7 +131,7 @@ const defaultVisibility: PanelVisibility = {
 
 const stored = loadFromStorage();
 
-export const useLayoutStore = create<LayoutState>((set) => ({
+export const useLayoutStore = create<LayoutState>((set, get) => ({
   layout: stored.layout || cloneTree(DEFAULT_LAYOUT),
   visibility: stored.visibility || { ...defaultVisibility },
   dnd: { isDragging: false, draggedPanelId: null, draggedEditorTabId: null },
@@ -477,8 +477,8 @@ export const useLayoutStore = create<LayoutState>((set) => ({
     });
   },
 
-  getLayoutSnapshot: () => {
-    const state = useLayoutStore.getState();
+  getLayoutSnapshot: (): LayoutSnapshot => {
+    const state = get();
     return {
       layout: cloneTree(state.layout),
       visibility: { ...state.visibility },
